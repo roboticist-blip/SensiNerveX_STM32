@@ -1,9 +1,0 @@
-Core/Src/MPU6050.c:252:18:MPU6050_ReadRaw.part.0.isra	40	static
-Core/Src/MPU6050.c:24:18:MPU6050_WriteReg	40	static
-Core/Src/MPU6050.c:46:18:MPU6050_ReadReg	32	static
-Core/Src/MPU6050.c:86:18:MPU6050_Init	32	static
-Core/Src/MPU6050.c:176:18:MPU6050_Calibrate	96	static
-Core/Src/MPU6050.c:252:18:MPU6050_ReadRaw	0	static
-Core/Src/MPU6050.c:301:6:MPU6050_ConvertToPhysical	0	static
-Core/Src/MPU6050.c:329:18:MPU6050_ReadScaled	40	static
-Core/Src/MPU6050.c:348:6:MPU6050_DataReadyISR	0	static
