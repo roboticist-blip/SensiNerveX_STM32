@@ -1,0 +1,8 @@
+Core/Src/FederatedClient.c:35:13:FLC_StateStr	0	static
+Core/Src/FederatedClient.c:52:6:FLC_Init	16	static
+Core/Src/FederatedClient.c:73:9:FLC_SubmitSample	40	static
+Core/Src/FederatedClient.c:162:6:FLC_DoTraining	56	static
+Core/Src/FederatedClient.c:346:6:FLC_TriggerUpload	24	static
+Core/Src/FederatedClient.c:355:6:FLC_Reset	8	static
+Core/Src/FederatedClient.c:364:6:FLC_PrintStatus	48	static
+Core/Src/FederatedClient.c:113:6:FLC_Tick	16	static

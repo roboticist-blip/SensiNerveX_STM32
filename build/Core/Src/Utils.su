@@ -1,0 +1,8 @@
+Core/Src/Utils.c:42:6:Utils_LogWrite	0	static
+Core/Src/Utils.c:61:6:Utils_TimerInit	8	static
+Core/Src/Utils.c:87:7:Utils_VecNorm	0	static
+Core/Src/Utils.c:106:6:Utils_VecClip	0	static
+Core/Src/Utils.c:125:10:Utils_CRC16	0	static
+Core/Src/Utils.c:159:6:Utils_PrintMemoryStats	32	static
+Core/Src/Utils.c:192:6:Utils_SeedRNG	0	static
+Core/Src/Utils.c:203:7:Utils_RandF	0	static

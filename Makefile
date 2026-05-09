@@ -169,12 +169,14 @@ LDFLAGS := \
     -Wl,-Map=$(MAP),--cref          \
     -Wl,--gc-sections               \
     -Wl,--print-memory-usage        \
+    -Wl,-u,_printf_float            \
     --specs=nano.specs              \
     --specs=nosys.specs             \
     -lm                             \
     -lc
 
 # -lm: libm for sqrtf, expf, atan2f, logf (FPU-accelerated via newlib)
+# -u _printf_float: enable %f/%e/%g formatting in newlib-nano printf/snprintf
 # --gc-sections: removes unused code/data (critical for 1MB Flash budget)
 # --print-memory-usage: prints Flash/RAM usage after link
 

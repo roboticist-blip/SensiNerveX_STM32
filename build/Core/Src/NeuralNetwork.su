@@ -1,0 +1,11 @@
+Core/Src/NeuralNetwork.c:57:6:NN_ReLU	0	static
+Core/Src/NeuralNetwork.c:75:6:NN_Softmax	24	static
+Core/Src/NeuralNetwork.c:114:6:NN_Init	56	static
+Core/Src/NeuralNetwork.c:161:6:NN_Forward	24	static
+Core/Src/NeuralNetwork.c:202:7:NN_CrossEntropyLoss	8	static
+Core/Src/NeuralNetwork.c:236:6:NN_Backward	24	static
+Core/Src/NeuralNetwork.c:291:6:NN_UpdateWeights	0	static
+Core/Src/NeuralNetwork.c:326:7:NN_TrainStep	24	static
+Core/Src/NeuralNetwork.c:349:9:NN_Predict	0	static
+Core/Src/NeuralNetwork.c:366:7:NN_MovingAvgLoss	0	static
+Core/Src/NeuralNetwork.c:375:6:NN_PrintWeightStats	56	static

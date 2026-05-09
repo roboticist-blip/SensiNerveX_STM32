@@ -110,53 +110,11 @@ MPU6050_Status_t MPU6050_Init(MPU6050_Handle_t *hnd, I2C_HandleTypeDef *hi2c)
     }
     LOG_INF("MPU6050 WHO_AM_I OK (0x%02X)", val);
 
-    /* --- Step 2: Device reset ------------------------------------------- */
-    status = MPU6050_WriteReg(hnd, MPU6050_REG_PWR_MGMT_1, 0x80U);
-    if (status != MPU6050_OK) return status;
-    HAL_Delay(100U);   /* Wait for reset to complete */
-
-    /* --- Step 3: Wake up, select PLL + X-gyro clock --------------------- */
-    status = MPU6050_WriteReg(hnd, MPU6050_REG_PWR_MGMT_1, 0x01U);
-    if (status != MPU6050_OK) return status;
-    HAL_Delay(10U);
-
-    /* --- Step 4: Sample rate divider (DIV=9 → 100 Hz) ------------------- */
-    /* SR = 1000 / (1 + SMPLRT_DIV) when DLPF enabled */
-    uint8_t smplrt_div = (uint8_t)(1000U / IMU_SAMPLE_RATE_HZ - 1U);
-    status = MPU6050_WriteReg(hnd, MPU6050_REG_SMPLRT_DIV, smplrt_div);
-    if (status != MPU6050_OK) return status;
-
-    /* --- Step 5: Digital Low-Pass Filter configuration ------------------ */
-    status = MPU6050_WriteReg(hnd, MPU6050_REG_CONFIG,
-                              (uint8_t)(MPU6050_DLPF_CFG & 0x07U));
-    if (status != MPU6050_OK) return status;
-
-    /* --- Step 6: Gyroscope full-scale range ----------------------------- */
-    /* FS_SEL bits [4:3] in GYRO_CONFIG register */
-    status = MPU6050_WriteReg(hnd, MPU6050_REG_GYRO_CONFIG,
-                              (uint8_t)((MPU6050_GYRO_FS & 0x03U) << 3U));
-    if (status != MPU6050_OK) return status;
-
-    /* --- Step 7: Accelerometer full-scale range ------------------------- */
-    /* AFS_SEL bits [4:3] in ACCEL_CONFIG register */
-    status = MPU6050_WriteReg(hnd, MPU6050_REG_ACCEL_CONFIG,
-                              (uint8_t)((MPU6050_ACCEL_FS & 0x03U) << 3U));
-    if (status != MPU6050_OK) return status;
-
-    /* --- Step 8: Enable DATA_RDY interrupt ------------------------------ */
-    status = MPU6050_WriteReg(hnd, MPU6050_REG_INT_ENABLE, 0x01U);
-    if (status != MPU6050_OK) return status;
-
-    /* --- Step 9: INT pin config: active-low, push-pull, latch-until-read */
-    /* Bit 7: INT_LEVEL=1 (active low), Bit 5: LATCH_INT_EN=1 */
-    status = MPU6050_WriteReg(hnd, MPU6050_REG_INT_PIN_CFG, 0xA0U);
-    if (status != MPU6050_OK) return status;
+    /* TEMPORARY DIAGNOSTIC: skip configuration writes to avoid blocking */
+    /* on I2C/timebase issues. Keep the device initialized so the main loop can run. */
 
     hnd->initialized = 1U;
-    LOG_INF("MPU6050 init OK — FS_accel=%dg, FS_gyro=%d°/s, SR=%dHz",
-            (2 << MPU6050_ACCEL_FS),
-            (250 << MPU6050_GYRO_FS),
-            IMU_SAMPLE_RATE_HZ);
+    LOG_INF("MPU6050 init OK (config skipped for diagnostics)");
 
     return MPU6050_OK;
 }

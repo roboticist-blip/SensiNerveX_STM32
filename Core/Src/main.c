@@ -137,6 +137,20 @@ static void App_UpdateLEDs(uint8_t class_idx, uint8_t training);
 
 int main(void)
 {
+    /* === EARLY DEBUG: Toggle all LEDs to show main() was entered === */
+    __HAL_RCC_GPIOD_CLK_ENABLE();
+    GPIO_InitTypeDef GPIO_Init = {0};
+    GPIO_Init.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
+    GPIO_Init.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_Init.Pull = GPIO_NOPULL;
+    GPIO_Init.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOD, &GPIO_Init);
+    
+    /* Flash all LEDs to show main() started */
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_SET);
+    for (volatile int i = 0; i < 1000000; i++);  /* Busy wait ~1ms */
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
+    
     /* --- 1. HAL initialization (sets SysTick at 1 kHz) ------------------ */
     HAL_Init();
 
@@ -156,6 +170,23 @@ int main(void)
 
     /* --- 5. Enable UART receive interrupt for label commands ------------ */
     HAL_UART_Receive_IT(&huart2, &g_uart_rx_byte, 1U);
+
+    /* --- 6. Test GPIO and UART to diagnose connectivity ---- */
+    /* Toggle LED PD12 to show the board is running */
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);   /* LED on */
+    HAL_Delay(100);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET); /* LED off */
+    HAL_Delay(100);
+    
+    /* Try to send test message with error checking */
+    const char *test_msg = "\r\n[TEST] UART TEST MESSAGE\r\n";
+    HAL_StatusTypeDef uart_status = HAL_UART_Transmit(&huart2, (uint8_t *)test_msg, 
+                                                       strlen(test_msg), 500);
+    /* If UART failed, try again once more */
+    if (uart_status != HAL_OK) {
+        HAL_Delay(50);
+        HAL_UART_Transmit(&huart2, (uint8_t *)test_msg, strlen(test_msg), 500);
+    }
 
     LOG_INF("=== FedVibroSense STM32F405 FL Client Started ===");
     LOG_INF("FEATURE_VECTOR_SIZE=%u, NN=%ux%ux%u, FL_LOCAL_EPOCHS=%u",
@@ -313,15 +344,9 @@ static void App_Init(void)
         }
     }
 
-    /* Calibrate gyroscope (device must be stationary during this ~2 s) */
-    LOG_INF("Keep device STATIONARY for gyro calibration...");
-    HAL_Delay(500U);   /* Short settle time */
-    MPU6050_Status_t cal_ret = MPU6050_Calibrate(&s_mpu);
-    if (cal_ret != MPU6050_OK) {
-        LOG_ERR("MPU6050 calibration failed — continuing with zero bias");
-    }
-
-    LOG_INF("App_Init complete. Waiting for 1 s of IMU data...");
+    /* Skip blocking gyro calibration for now so the main loop can run */
+    LOG_INF("MPU6050 calibration skipped (temporary)");
+    LOG_INF("App_Init complete. Waiting for IMU data...");
 }
 
 /* 

@@ -1,0 +1,5 @@
+Core/Src/ComplementaryFilter.c:52:6:CF_Init	0	static
+Core/Src/ComplementaryFilter.c:64:6:CF_Reset	0	static
+Core/Src/ComplementaryFilter.c:87:7:CF_AccelPitch	8	static
+Core/Src/ComplementaryFilter.c:103:7:CF_AccelRoll	8	static
+Core/Src/ComplementaryFilter.c:127:6:CF_Update	48	static
