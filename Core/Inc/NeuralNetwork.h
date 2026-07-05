@@ -31,8 +31,8 @@
  * Loss function: Categorical cross-entropy
  * Initialization: Xavier/Glorot uniform
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #ifndef NEURALNETWORK_H
@@ -41,55 +41,45 @@
 #include <stdint.h>
 #include "Config.h"
 
-/* =========================================================================
+/*
  * INDEX MACRO — row-major matrix element access
  * MAT(ptr, row, col, ncols) expands to ptr[row * ncols + col]
- * ========================================================================= */
+ */
 #define MAT(ptr, row, col, ncols)  ((ptr)[(row) * (ncols) + (col)])
 
-/* =========================================================================
+/* 
  * NEURAL NETWORK HANDLE
  *
  * All buffers are declared inside the struct to keep everything
  * in a single statically-allocated object (place in BSS or SRAM2).
- * ========================================================================= */
+ */
 
 typedef struct {
-    /* ---- Weights and biases ------------------------------------------ */
-    float W1[NN_INPUT_SIZE  * NN_HIDDEN_SIZE];  /**< Layer 1 weights [I×H] */
-    float b1[NN_HIDDEN_SIZE];                   /**< Layer 1 biases  [H]   */
-    float W2[NN_HIDDEN_SIZE * NN_OUTPUT_SIZE];  /**< Layer 2 weights [H×O] */
-    float b2[NN_OUTPUT_SIZE];                   /**< Layer 2 biases  [O]   */
+    float W1[NN_INPUT_SIZE  * NN_HIDDEN_SIZE];  //< Layer 1 weights [I×H] 
+    float b1[NN_HIDDEN_SIZE];                   //< Layer 1 biases  [H]   
+    float W2[NN_HIDDEN_SIZE * NN_OUTPUT_SIZE];  //< Layer 2 weights [H×O]
+    float b2[NN_OUTPUT_SIZE];                   //< Layer 2 biases  [O]   
 
-    /* ---- Forward pass activations ------------------------------------- */
-    float a1[NN_HIDDEN_SIZE];    /**< Post-ReLU hidden activations */
-    float a2[NN_OUTPUT_SIZE];    /**< Post-Softmax output probabilities */
-    float z1[NN_HIDDEN_SIZE];    /**< Pre-ReLU linear combination */
-    float z2[NN_OUTPUT_SIZE];    /**< Pre-Softmax linear combination */
+    float a1[NN_HIDDEN_SIZE];    //< Post-ReLU hidden activations 
+    float a2[NN_OUTPUT_SIZE];    //< Post-Softmax output probabilities 
+    float z1[NN_HIDDEN_SIZE];    //< Pre-ReLU linear combination
+    float z2[NN_OUTPUT_SIZE];    //< Pre-Softmax linear combination
 
-    /* ---- Backward pass gradients -------------------------------------- */
-    float dW1[NN_INPUT_SIZE  * NN_HIDDEN_SIZE]; /**< Gradient w.r.t. W1 */
-    float db1[NN_HIDDEN_SIZE];                  /**< Gradient w.r.t. b1 */
-    float dW2[NN_HIDDEN_SIZE * NN_OUTPUT_SIZE]; /**< Gradient w.r.t. W2 */
-    float db2[NN_OUTPUT_SIZE];                  /**< Gradient w.r.t. b2 */
+    float dW1[NN_INPUT_SIZE  * NN_HIDDEN_SIZE]; //< Gradient w.r.t. W1 
+    float db1[NN_HIDDEN_SIZE];                  //< Gradient w.r.t. b1 
+    float dW2[NN_HIDDEN_SIZE * NN_OUTPUT_SIZE]; //< Gradient w.r.t. W2 
+    float db2[NN_OUTPUT_SIZE];                  //< Gradient w.r.t. b2 
 
-    /* ---- Error signals ------------------------------------------------ */
-    float delta2[NN_OUTPUT_SIZE];  /**< Output layer error delta */
-    float delta1[NN_HIDDEN_SIZE];  /**< Hidden layer error delta */
+    float delta2[NN_OUTPUT_SIZE];  //< Output layer error delta 
+    float delta1[NN_HIDDEN_SIZE];  //< Hidden layer error delta 
 
-    /* ---- Hyperparameters --------------------------------------------- */
-    float learning_rate;           /**< SGD step size */
+    float learning_rate;           //< SGD step size
 
-    /* ---- Diagnostics ------------------------------------------------- */
-    float last_loss;               /**< Cross-entropy loss from last forward */
-    uint32_t train_step_count;     /**< Total gradient steps taken */
-    float loss_history[LOSS_HISTORY_LEN];  /**< Rolling loss log */
-    uint8_t loss_history_idx;              /**< Circular index into loss_history */
+    float last_loss;               //< Cross-entropy loss from last forward 
+    uint32_t train_step_count;     //< Total gradient steps taken 
+    float loss_history[LOSS_HISTORY_LEN];  //< Rolling loss log 
+    uint8_t loss_history_idx;              //< Circular index into loss_history 
 } NN_Handle_t;
-
-/* =========================================================================
- * PUBLIC API
- * ========================================================================= */
 
 /**
  * @brief  Initialize the neural network: Xavier weight init, zero biases.

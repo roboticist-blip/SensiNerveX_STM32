@@ -65,9 +65,6 @@ DRESULT disk_write(uint8_t pdrv, const uint8_t *buff, uint32_t sector, uint32_t 
     if (s_status & STA_NOINIT) {
         return RES_NOTRDY;
     }
-    /* Read-only enforcement (FF_FS_READONLY) is handled inside ff.c itself —
-     * it never calls disk_write() at all in that configuration, so no
-     * duplicate check is needed here. */
     return (SDCard_WriteBlocks(buff, sector, count) == SDCARD_OK) ? RES_OK : RES_ERROR;
 }
 
@@ -82,8 +79,6 @@ DRESULT disk_ioctl(uint8_t pdrv, uint8_t cmd, void *buff)
 
     switch (cmd) {
         case CTRL_SYNC:
-            /* SDCard_WriteBlocks() is already blocking-until-ready, so
-             * there is no write cache to flush here. */
             return RES_OK;
 
         case GET_SECTOR_COUNT:
@@ -95,7 +90,7 @@ DRESULT disk_ioctl(uint8_t pdrv, uint8_t cmd, void *buff)
             return RES_OK;
 
         case GET_BLOCK_SIZE:
-            *(uint32_t *)buff = 1U;   /* erase-block size in sectors — unknown, report 1 */
+            *(uint32_t *)buff = 1U;   
             return RES_OK;
 
         default:

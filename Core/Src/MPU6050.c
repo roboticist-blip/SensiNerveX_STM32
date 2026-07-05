@@ -2,13 +2,8 @@
  * @file    MPU6050.c
  * @brief   MPU-6050 IMU driver implementation for STM32F405 (HAL I2C)
  *
- * All I2C transactions use HAL_I2C_Mem_Read / HAL_I2C_Mem_Write in
- * blocking mode with I2C_TIMEOUT_MS timeout.  DMA transfers are not
- * used here to keep the driver simple and deterministic; for higher
- * throughput (>1 kHz), switch to HAL_I2C_Mem_Read_DMA with a
- * completion callback.
  *
- * @author  FedVibroSense Project
+ * @author  SensiNerveX Project
  * @version 1.0.0
  */
 
@@ -16,10 +11,6 @@
 #include "Utils.h"
 #include <string.h>
 #include <math.h>
-
-/* =========================================================================
- * PRIVATE HELPER — single register write
- * ========================================================================= */
 
 MPU6050_Status_t MPU6050_WriteReg(MPU6050_Handle_t *hnd, uint8_t reg, uint8_t data)
 {
@@ -39,10 +30,6 @@ MPU6050_Status_t MPU6050_WriteReg(MPU6050_Handle_t *hnd, uint8_t reg, uint8_t da
     return MPU6050_OK;
 }
 
-/* =========================================================================
- * PRIVATE HELPER — single register read
- * ========================================================================= */
-
 MPU6050_Status_t MPU6050_ReadReg(MPU6050_Handle_t *hnd, uint8_t reg, uint8_t *data)
 {
     HAL_StatusTypeDef ret = HAL_I2C_Mem_Read(
@@ -60,10 +47,6 @@ MPU6050_Status_t MPU6050_ReadReg(MPU6050_Handle_t *hnd, uint8_t reg, uint8_t *da
     }
     return MPU6050_OK;
 }
-
-/* =========================================================================
- * INITIALIZATION
- * ========================================================================= */
 
 /**
  * @brief  Full MPU-6050 initialization sequence.
@@ -88,7 +71,6 @@ MPU6050_Status_t MPU6050_Init(MPU6050_Handle_t *hnd, I2C_HandleTypeDef *hi2c)
     MPU6050_Status_t status;
     uint8_t val;
 
-    /* Store handle parameters */
     hnd->hi2c      = hi2c;
     hnd->dev_addr  = MPU6050_I2C_ADDR_SHIFTED;
     hnd->initialized = 0U;
@@ -99,7 +81,6 @@ MPU6050_Status_t MPU6050_Init(MPU6050_Handle_t *hnd, I2C_HandleTypeDef *hi2c)
     hnd->accel_bias_y = 0.0f;
     hnd->data_ready_flag = 0U;
 
-    /* --- Step 1: WHO_AM_I verification ---------------------------------- */
     status = MPU6050_ReadReg(hnd, MPU6050_REG_WHO_AM_I, &val);
     if (status != MPU6050_OK) return status;
 
@@ -110,18 +91,11 @@ MPU6050_Status_t MPU6050_Init(MPU6050_Handle_t *hnd, I2C_HandleTypeDef *hi2c)
     }
     LOG_INF("MPU6050 WHO_AM_I OK (0x%02X)", val);
 
-    /* TEMPORARY DIAGNOSTIC: skip configuration writes to avoid blocking */
-    /* on I2C/timebase issues. Keep the device initialized so the main loop can run. */
-
     hnd->initialized = 1U;
     LOG_INF("MPU6050 init OK (config skipped for diagnostics)");
 
     return MPU6050_OK;
 }
-
-/* =========================================================================
- * CALIBRATION
- * ========================================================================= */
 
 /**
  * @brief  Collect MPU6050_CALIBRATION_SAMPLES samples at rest and compute
@@ -154,17 +128,14 @@ MPU6050_Status_t MPU6050_Calibrate(MPU6050_Handle_t *hnd)
         sum_ax += (double)raw.accel_x;
         sum_ay += (double)raw.accel_y;
 
-        /* Wait for next sample period */
         HAL_Delay(1000U / IMU_SAMPLE_RATE_HZ);
     }
 
-    /* Compute mean raw gyro bias and convert to °/s */
     double n = (double)MPU6050_CALIBRATION_SAMPLES;
     hnd->gyro_bias_x = (float)((sum_gx / n) / MPU6050_GYRO_SENSITIVITY);
     hnd->gyro_bias_y = (float)((sum_gy / n) / MPU6050_GYRO_SENSITIVITY);
     hnd->gyro_bias_z = (float)((sum_gz / n) / MPU6050_GYRO_SENSITIVITY);
 
-    /* Optional: accel X/Y bias (sensor should read 0g on these axes) */
     hnd->accel_bias_x = (float)((sum_ax / n) / MPU6050_ACCEL_SENSITIVITY *
                                  GRAVITY_MSS);
     hnd->accel_bias_y = (float)((sum_ay / n) / MPU6050_ACCEL_SENSITIVITY *
@@ -181,9 +152,6 @@ MPU6050_Status_t MPU6050_Calibrate(MPU6050_Handle_t *hnd)
     return MPU6050_OK;
 }
 
-/* =========================================================================
- * BURST READ — 14 BYTES
- * ========================================================================= */
 
 /**
  * @brief  Read all 7 sensor words (14 bytes) in a single I2C transaction.
@@ -228,7 +196,6 @@ MPU6050_Status_t MPU6050_ReadRaw(MPU6050_Handle_t *hnd, MPU6050_RawData_t *raw)
         return MPU6050_ERR_I2C;
     }
 
-    /* Big-endian 16-bit reconstruction */
     raw->accel_x = (int16_t)((uint16_t)(buf[0]  << 8U) | buf[1]);
     raw->accel_y = (int16_t)((uint16_t)(buf[2]  << 8U) | buf[3]);
     raw->accel_z = (int16_t)((uint16_t)(buf[4]  << 8U) | buf[5]);
@@ -239,10 +206,6 @@ MPU6050_Status_t MPU6050_ReadRaw(MPU6050_Handle_t *hnd, MPU6050_RawData_t *raw)
 
     return MPU6050_OK;
 }
-
-/* =========================================================================
- * UNIT CONVERSION
- * ========================================================================= */
 
 /**
  * @brief  Convert raw ADC counts to physical SI units.
@@ -260,15 +223,12 @@ void MPU6050_ConvertToPhysical(const MPU6050_Handle_t *hnd,
                                 const MPU6050_RawData_t *raw,
                                 MPU6050_Data_t *out)
 {
-    /* Accelerometer: raw → m/s² */
     out->ax = ((float)raw->accel_x / MPU6050_ACCEL_SENSITIVITY) * GRAVITY_MSS
               - hnd->accel_bias_x;
     out->ay = ((float)raw->accel_y / MPU6050_ACCEL_SENSITIVITY) * GRAVITY_MSS
               - hnd->accel_bias_y;
     out->az = ((float)raw->accel_z / MPU6050_ACCEL_SENSITIVITY) * GRAVITY_MSS;
-    /* Note: az bias not removed — vertical axis includes gravity by design */
 
-    /* Gyroscope: raw → °/s with bias compensation */
     out->gx = ((float)raw->gyro_x / MPU6050_GYRO_SENSITIVITY)
               - hnd->gyro_bias_x;
     out->gy = ((float)raw->gyro_y / MPU6050_GYRO_SENSITIVITY)
@@ -276,13 +236,8 @@ void MPU6050_ConvertToPhysical(const MPU6050_Handle_t *hnd,
     out->gz = ((float)raw->gyro_z / MPU6050_GYRO_SENSITIVITY)
               - hnd->gyro_bias_z;
 
-    /* Temperature: raw → °C */
     out->temp_c = ((float)raw->temp / 340.0f) + 36.53f;
 }
-
-/* =========================================================================
- * COMBINED READ + CONVERT
- * ========================================================================= */
 
 MPU6050_Status_t MPU6050_ReadScaled(MPU6050_Handle_t *hnd, MPU6050_Data_t *out)
 {
@@ -293,15 +248,8 @@ MPU6050_Status_t MPU6050_ReadScaled(MPU6050_Handle_t *hnd, MPU6050_Data_t *out)
     return MPU6050_OK;
 }
 
-/* =========================================================================
- * INTERRUPT CALLBACK
- * ========================================================================= */
-
-/**
+/*
  * @brief  Called from HAL_GPIO_EXTI_Callback when MPU-6050 INT fires.
- *
- * This is an ISR context — keep it minimal.  Only sets the flag;
- * the main loop polls MPU6050_IsDataReady() and calls ReadScaled().
  */
 void MPU6050_DataReadyISR(MPU6050_Handle_t *hnd)
 {

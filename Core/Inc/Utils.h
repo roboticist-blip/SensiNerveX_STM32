@@ -9,8 +9,8 @@
  *  - CRC-16 computation
  *  - Memory footprint reporting
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #ifndef UTILS_H
@@ -21,22 +21,13 @@
 #include <math.h>
 #include "Config.h"
 
-/* =========================================================================
- * EXTERN HAL HANDLE — defined in main.c / CubeMX-generated code
- * ========================================================================= */
-#include "stm32f4xx_hal.h"
-extern UART_HandleTypeDef huart2;   /* Debug UART */
-extern UART_HandleTypeDef huart1;   /* FL communication UART */
-extern TIM_HandleTypeDef  htim2;    /* Free-running microsecond timer */
 
-/* =========================================================================
- * DEBUG LOGGING
- *
- * Usage:
- *   LOG_ERR("I2C failed: %d", retval);
- *   LOG_INF("Training loss: %.4f", loss);
- *   LOG_VRB("w[0] = %.6f", w);
- * ========================================================================= */
+#include "stm32f4xx_hal.h"
+extern UART_HandleTypeDef huart2;   // Debug UART 
+extern UART_HandleTypeDef huart1;   // FL communication UART 
+extern TIM_HandleTypeDef  htim2;    // Free-running microsecond timer 
+
+
 
 extern char _utils_log_buf[DEBUG_LOG_BUF_SIZE];
 
@@ -78,10 +69,6 @@ void Utils_LogWrite(const char *buf, uint16_t len);
 #define LOG_VRB(fmt, ...) do {} while(0)
 #endif
 
-/* =========================================================================
- * TIMING UTILITIES
- * ========================================================================= */
-
 /**
  * @brief  Initialize the microsecond timer (call once in main before use).
  *         Configures TIM2 as a free-running 32-bit microsecond counter.
@@ -117,10 +104,6 @@ static inline uint32_t Utils_ElapsedMicros(uint32_t start_us)
 {
     return Utils_GetMicros() - start_us;   /* unsigned subtraction wraps correctly */
 }
-
-/* =========================================================================
- * MATH HELPERS
- * ========================================================================= */
 
 /** Clamp x to [lo, hi] */
 static inline float Utils_ClampF(float x, float lo, float hi)
@@ -174,10 +157,6 @@ float Utils_VecNorm(const float *v, uint32_t n);
  */
 void Utils_VecClip(float *v, uint32_t n, float clip);
 
-/* =========================================================================
- * CRC-16/CCITT
- * ========================================================================= */
-
 /**
  * @brief  Compute CRC-16/CCITT over a byte buffer.
  * @param  data  Pointer to data
@@ -186,9 +165,6 @@ void Utils_VecClip(float *v, uint32_t n, float clip);
  */
 uint16_t Utils_CRC16(const uint8_t *data, uint32_t len);
 
-/* =========================================================================
- * MEMORY DIAGNOSTICS
- * ========================================================================= */
 
 /**
  * @brief  Estimate remaining heap/stack gap by walking the stack.
@@ -196,11 +172,6 @@ uint16_t Utils_CRC16(const uint8_t *data, uint32_t len);
  *         Prints result via LOG_INF.
  */
 void Utils_PrintMemoryStats(void);
-
-/* =========================================================================
- * PSEUDO-RANDOM NUMBER GENERATOR (LCG — deterministic seed)
- * Used for Xavier weight initialization only.
- * ========================================================================= */
 
 /**
  * @brief  Seed the internal LCG PRNG.

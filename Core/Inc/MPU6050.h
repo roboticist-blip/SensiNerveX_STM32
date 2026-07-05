@@ -1,4 +1,4 @@
-/**
+/*
  * @file    MPU6050.h
  * @brief   MPU-6050 IMU driver for STM32F405 (HAL I2C)
  *
@@ -9,13 +9,8 @@
  *  - Scaled output in physical units (m/s², °/s)
  *  - Interrupt-based data-ready signaling (optional EXTI path)
  *
- * Hardware assumptions:
- *  - MPU-6050 connected to I2C1 (PB8=SCL, PB9=SDA)
- *  - AD0 pin tied to GND → I2C address = 0x68
- *  - INT pin connected to PA0 (EXTI0) if interrupt mode enabled
- *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #ifndef MPU6050_H
@@ -24,10 +19,6 @@
 #include <stdint.h>
 #include "stm32f4xx_hal.h"
 #include "Config.h"
-
-/* =========================================================================
- * MPU-6050 REGISTER MAP (relevant subset)
- * ========================================================================= */
 
 #define MPU6050_REG_SELF_TEST_X    0x0DU
 #define MPU6050_REG_SELF_TEST_Y    0x0EU
@@ -62,54 +53,46 @@
 
 #define MPU6050_WHO_AM_I_VAL       0x68U
 
-/* =========================================================================
- * DATA STRUCTURES
- * ========================================================================= */
-
-/**
+/*
  * @brief Raw sensor output (unscaled 16-bit ADC counts).
  */
 typedef struct {
-    int16_t accel_x;   /**< Accelerometer X raw count */
-    int16_t accel_y;   /**< Accelerometer Y raw count */
-    int16_t accel_z;   /**< Accelerometer Z raw count */
-    int16_t temp;      /**< Temperature raw count */
-    int16_t gyro_x;    /**< Gyroscope X raw count */
-    int16_t gyro_y;    /**< Gyroscope Y raw count */
-    int16_t gyro_z;    /**< Gyroscope Z raw count */
+    int16_t accel_x;   //< Accelerometer X raw count 
+    int16_t accel_y;   //< Accelerometer Y raw count 
+    int16_t accel_z;   //< Accelerometer Z raw count 
+    int16_t temp;      //< Temperature raw count 
+    int16_t gyro_x;    //< Gyroscope X raw count 
+    int16_t gyro_y;    //< Gyroscope Y raw count 
+    int16_t gyro_z;    //< Gyroscope Z raw count 
 } MPU6050_RawData_t;
 
-/**
+/*
  * @brief Scaled sensor output in physical units.
  */
 typedef struct {
-    float ax;   /**< Acceleration X [m/s²] */
-    float ay;   /**< Acceleration Y [m/s²] */
-    float az;   /**< Acceleration Z [m/s²] */
-    float gx;   /**< Angular velocity X [°/s], bias-compensated */
-    float gy;   /**< Angular velocity Y [°/s], bias-compensated */
-    float gz;   /**< Angular velocity Z [°/s], bias-compensated */
-    float temp_c; /**< Temperature [°C] */
+    float ax;   //< Acceleration X [m/s²] 
+    float ay;   //< Acceleration Y [m/s²] 
+    float az;   //< Acceleration Z [m/s²] 
+    float gx;   //< Angular velocity X [°/s], bias-compensated 
+    float gy;   //< Angular velocity Y [°/s], bias-compensated 
+    float gz;   //< Angular velocity Z [°/s], bias-compensated 
+    float temp_c; //< Temperature [°C] 
 } MPU6050_Data_t;
 
-/**
+/*
  * @brief Driver handle — owns I2C reference and calibration state.
  */
 typedef struct {
-    I2C_HandleTypeDef *hi2c;      /**< Pointer to HAL I2C handle */
-    uint8_t  dev_addr;            /**< 8-bit shifted I2C address */
-    float    gyro_bias_x;         /**< Gyro bias X [°/s] from calibration */
-    float    gyro_bias_y;         /**< Gyro bias Y [°/s] from calibration */
-    float    gyro_bias_z;         /**< Gyro bias Z [°/s] from calibration */
-    float    accel_bias_x;        /**< Accel bias X [m/s²] (optional) */
-    float    accel_bias_y;        /**< Accel bias Y [m/s²] (optional) */
-    uint8_t  initialized;         /**< 1 if MPU6050_Init() succeeded */
-    uint8_t  data_ready_flag;     /**< Set by EXTI ISR if interrupt mode used */
+    I2C_HandleTypeDef *hi2c;      //< Pointer to HAL I2C handle 
+    uint8_t  dev_addr;            //< 8-bit shifted I2C address 
+    float    gyro_bias_x;         //< Gyro bias X [°/s] from calibration 
+    float    gyro_bias_y;         //< Gyro bias Y [°/s] from calibration 
+    float    gyro_bias_z;         //< Gyro bias Z [°/s] from calibration 
+    float    accel_bias_x;        //< Accel bias X [m/s²] (optional) 
+    float    accel_bias_y;        //< Accel bias Y [m/s²] (optional) 
+    uint8_t  initialized;         //< 1 if MPU6050_Init() succeeded 
+    uint8_t  data_ready_flag;     //< Set by EXTI ISR if interrupt mode used 
 } MPU6050_Handle_t;
-
-/* =========================================================================
- * STATUS CODES
- * ========================================================================= */
 
 typedef enum {
     MPU6050_OK          = 0,
@@ -119,11 +102,7 @@ typedef enum {
     MPU6050_ERR_NOTINIT = 4,
 } MPU6050_Status_t;
 
-/* =========================================================================
- * PUBLIC API
- * ========================================================================= */
-
-/**
+/*
  * @brief  Initialize the MPU-6050 and verify device identity.
  *
  * Sequence:
@@ -141,7 +120,7 @@ typedef enum {
  */
 MPU6050_Status_t MPU6050_Init(MPU6050_Handle_t *hnd, I2C_HandleTypeDef *hi2c);
 
-/**
+/*
  * @brief  Calibrate gyroscope bias (device must be perfectly still).
  *
  * Averages MPU6050_CALIBRATION_SAMPLES readings and stores the mean
@@ -153,7 +132,7 @@ MPU6050_Status_t MPU6050_Init(MPU6050_Handle_t *hnd, I2C_HandleTypeDef *hi2c);
  */
 MPU6050_Status_t MPU6050_Calibrate(MPU6050_Handle_t *hnd);
 
-/**
+/*
  * @brief  Burst-read all 14 bytes (accel + temp + gyro) in one I2C transaction.
  *
  * This is the primary data-acquisition call executed at IMU_SAMPLE_RATE_HZ.
@@ -165,7 +144,7 @@ MPU6050_Status_t MPU6050_Calibrate(MPU6050_Handle_t *hnd);
  */
 MPU6050_Status_t MPU6050_ReadRaw(MPU6050_Handle_t *hnd, MPU6050_RawData_t *raw);
 
-/**
+/*
  * @brief  Convert raw counts to physical units and apply bias compensation.
  *
  * Accelerometer: raw / ACCEL_SENSITIVITY * GRAVITY_MSS → m/s²
@@ -180,7 +159,7 @@ void MPU6050_ConvertToPhysical(const MPU6050_Handle_t *hnd,
                                 const MPU6050_RawData_t *raw,
                                 MPU6050_Data_t *out);
 
-/**
+/*
  * @brief  Combined read + convert in one call (convenience wrapper).
  * @param  hnd   Initialized handle
  * @param  out   Scaled output
@@ -188,7 +167,7 @@ void MPU6050_ConvertToPhysical(const MPU6050_Handle_t *hnd,
  */
 MPU6050_Status_t MPU6050_ReadScaled(MPU6050_Handle_t *hnd, MPU6050_Data_t *out);
 
-/**
+/*
  * @brief  Read a single register byte.
  * @param  hnd   Initialized handle
  * @param  reg   Register address
@@ -197,7 +176,7 @@ MPU6050_Status_t MPU6050_ReadScaled(MPU6050_Handle_t *hnd, MPU6050_Data_t *out);
  */
 MPU6050_Status_t MPU6050_ReadReg(MPU6050_Handle_t *hnd, uint8_t reg, uint8_t *data);
 
-/**
+/*
  * @brief  Write a single register byte.
  * @param  hnd   Initialized handle
  * @param  reg   Register address
@@ -206,7 +185,7 @@ MPU6050_Status_t MPU6050_ReadReg(MPU6050_Handle_t *hnd, uint8_t reg, uint8_t *da
  */
 MPU6050_Status_t MPU6050_WriteReg(MPU6050_Handle_t *hnd, uint8_t reg, uint8_t data);
 
-/**
+/*
  * @brief  Clear the data_ready_flag (called after reading data in ISR mode).
  * @param  hnd  Handle
  */
@@ -215,7 +194,7 @@ static inline void MPU6050_ClearDataReady(MPU6050_Handle_t *hnd)
     hnd->data_ready_flag = 0U;
 }
 
-/**
+/*
  * @brief  Check if new data is available.
  * @param  hnd  Handle
  * @return 1 if data_ready_flag is set, 0 otherwise
@@ -225,7 +204,7 @@ static inline uint8_t MPU6050_IsDataReady(const MPU6050_Handle_t *hnd)
     return hnd->data_ready_flag;
 }
 
-/**
+/*
  * @brief  EXTI callback — call from HAL_GPIO_EXTI_Callback when INT fires.
  *         Sets data_ready_flag in the handle for polling-based consumers.
  * @param  hnd  Handle

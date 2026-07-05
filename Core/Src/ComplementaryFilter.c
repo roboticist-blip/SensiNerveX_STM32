@@ -22,25 +22,20 @@
  *  With α=0.98, dt=0.01 s: τ = 0.49 s
  *  Cross-over frequency: fc = 1/(2πτ) ≈ 0.32 Hz
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #include "ComplementaryFilter.h"
 #include "Utils.h"
 #include <math.h>
 
-/* Pi constant for angle conversion — use M_PI from math.h if available */
 #ifndef M_PI
 #define M_PI  3.14159265358979323846f
 #endif
 
 #define RAD_TO_DEG  (180.0f / (float)M_PI)
 #define DEG_TO_RAD  ((float)M_PI / 180.0f)
-
-/* =========================================================================
- * INITIALIZATION
- * ========================================================================= */
 
 /**
  * @brief  Initialize complementary filter state.
@@ -68,9 +63,6 @@ void CF_Reset(CF_State_t *state)
     state->initialized = 0U;
 }
 
-/* =========================================================================
- * ACCELEROMETER ANGLE HELPERS
- * ========================================================================= */
 
 /**
  * @brief  Derive pitch from accelerometer readings.
@@ -87,7 +79,6 @@ void CF_Reset(CF_State_t *state)
 float CF_AccelPitch(float ax, float ay, float az)
 {
     float denom = sqrtf(ax * ax + az * az);
-    /* Guard against division by zero when device is vertical */
     if (denom < 1e-6f) denom = 1e-6f;
     return atan2f(ay, denom) * RAD_TO_DEG;
 }
@@ -107,10 +98,6 @@ float CF_AccelRoll(float ax, float ay, float az)
     return atan2f(ax, denom) * RAD_TO_DEG;
 }
 
-/* =========================================================================
- * MAIN FILTER UPDATE — called at IMU_SAMPLE_RATE_HZ
- * ========================================================================= */
-
 /**
  * @brief  Process one IMU sample through the complementary filter.
  *
@@ -126,46 +113,33 @@ float CF_AccelRoll(float ax, float ay, float az)
  */
 void CF_Update(CF_State_t *state, const MPU6050_Data_t *imu, CF_Output_t *out)
 {
-    /* ---- 1. Compute accelerometer-derived angles ----------------------- */
     float pitch_acc = CF_AccelPitch(imu->ax, imu->ay, imu->az);
     float roll_acc  = CF_AccelRoll (imu->ax, imu->ay, imu->az);
 
     if (!state->initialized) {
-        /* Bootstrap: use accelerometer directly for first sample */
         state->pitch       = pitch_acc;
         state->roll        = roll_acc;
         state->initialized = 1U;
     } else {
-        /* ---- 2. Gyroscope prediction step ------------------------------ */
-        /* Integrate gyroscope angular velocity over the sample period.
-         * Note: imu->gx is pitch rate, imu->gy is roll rate for this
-         * sensor orientation (validate against your mounting). */
         float pitch_gyro = state->pitch + imu->gx * state->dt;
         float roll_gyro  = state->roll  + imu->gy * state->dt;
 
-        /* ---- 3. Complementary fusion ----------------------------------- */
-        /* α weights gyro (handles fast vibrations)
-         * (1-α) weights accel (corrects long-term drift) */
         state->pitch = state->alpha * pitch_gyro
                      + (1.0f - state->alpha) * pitch_acc;
         state->roll  = state->alpha * roll_gyro
                      + (1.0f - state->alpha) * roll_acc;
     }
 
-    /* ---- 4. Compute vibration magnitude features ----------------------- */
-    /* Gyroscope vector magnitude [°/s] — sensitive to fast vibration */
     float gx = imu->gx, gy = imu->gy, gz = imu->gz;
     float gyro_mag_new = sqrtf(gx * gx + gy * gy + gz * gz);
 
-    /* Accelerometer vector magnitude [m/s²] — 9.81 m/s² at rest */
+
     float ax = imu->ax, ay = imu->ay, az = imu->az;
     float accel_mag = sqrtf(ax * ax + ay * ay + az * az);
 
-    /* Delta gyro magnitude — captures rate of change of vibration */
-    float prev_gyro_mag = out->gyro_mag;  /* Previous frame's value */
+    float prev_gyro_mag = out->gyro_mag;  
     float delta_gyro_mag = gyro_mag_new - prev_gyro_mag;
 
-    /* ---- 5. Write output ----------------------------------------------- */
     out->pitch          = state->pitch;
     out->roll           = state->roll;
     out->gyro_mag       = gyro_mag_new;

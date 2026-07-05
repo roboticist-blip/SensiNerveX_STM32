@@ -79,9 +79,6 @@
 #define _SYNC_t	HANDLE		/* O/S dependent sync object type. e.g. HANDLE, ID, OS_EVENT*, SemaphoreHandle_t and etc. */
 
 
-/*---------------------------------------------------------------------------/
-/ Misc Definitions
-/---------------------------------------------------------------------------*/
 
 #define _FS_NOLIB		1		/* 0:Enable creation of chain of singly-linked list, 1:Disable */
 #define _FS_DAT		20		/* Date SFN 8.3 feature */

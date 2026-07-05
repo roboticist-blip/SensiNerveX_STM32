@@ -18,8 +18,8 @@
  *  - Deterministic O(1) execution per sample
  *  - Sufficient for vibration feature extraction (absolute accuracy < 1°)
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #ifndef COMPLEMENTARYFILTER_H
@@ -29,46 +29,30 @@
 #include "Config.h"
 #include "MPU6050.h"
 
-/* =========================================================================
- * FILTER STATE
- * ========================================================================= */
-
 /**
  * @brief Complementary filter state (one instance per IMU axis pair).
  */
 typedef struct {
-    float pitch;          /**< Current pitch estimate [°] */
-    float roll;           /**< Current roll estimate [°] */
-    float alpha;          /**< Gyro trust weight (CF_ALPHA) */
-    float dt;             /**< Sample period [s] (IMU_SAMPLE_PERIOD_S) */
-    uint8_t initialized;  /**< 1 after first sample processed */
+    float pitch;          // Current pitch estimate [°] 
+    float roll;           // Current roll estimate [°] 
+    float alpha;          // Gyro trust weight (CF_ALPHA) 
+    float dt;             // Sample period [s] (IMU_SAMPLE_PERIOD_S) 
+    uint8_t initialized;  // 1 after first sample processed 
 } CF_State_t;
-
-/* =========================================================================
- * OUTPUT
- * ========================================================================= */
 
 /**
  * @brief  Filtered orientation and derived vibration features per sample.
  */
 typedef struct {
-    float pitch;           /**< Filtered pitch [°] */
-    float roll;            /**< Filtered roll  [°] */
-    float gyro_mag;        /**< Gyroscope vector magnitude [°/s] */
-    float accel_mag;       /**< Accelerometer vector magnitude [m/s²] */
-    float delta_gyro_mag;  /**< Change in gyro_mag from previous sample */
+    float pitch;           //< Filtered pitch [°]
+    float roll;            //< Filtered roll  [°] 
+    float gyro_mag;        //< Gyroscope vector magnitude [°/s] 
+    float accel_mag;       //< Accelerometer vector magnitude [m/s²] 
+    float delta_gyro_mag;  //< Change in gyro_mag from previous sample 
 } CF_Output_t;
-
-/* =========================================================================
- * PUBLIC API
- * ========================================================================= */
 
 /**
  * @brief  Initialize the complementary filter state.
- *
- * Sets alpha from CF_ALPHA and dt from IMU_SAMPLE_PERIOD_S.
- * Marks state as uninitialized so the first sample bootstraps the angles
- * purely from the accelerometer (avoids transient spikes at startup).
  *
  * @param  state  Pointer to caller-allocated CF_State_t
  */

@@ -19,8 +19,8 @@
  *
  * At 921600 baud UART: ~8-bit framing → ~352 ms transfer time.
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #ifndef SERIALIZATION_H
@@ -30,12 +30,9 @@
 #include "Config.h"
 #include "NeuralNetwork.h"
 
-/* =========================================================================
- * PACKET CONSTANTS
- * ========================================================================= */
 
 #define SER_PROTOCOL_VERSION     0x01U
-#define SER_HEADER_SIZE          5U       /* magic(2) + ver(1) + nweights(2) */
+#define SER_HEADER_SIZE          5U       // magic(2) + ver(1) + nweights(2) 
 #define SER_CRC_SIZE             2U
 #define SER_PAYLOAD_BYTES        (FL_WEIGHT_COUNT * 4U)
 #define SER_TOTAL_PACKET_BYTES   (SER_HEADER_SIZE + SER_PAYLOAD_BYTES + SER_CRC_SIZE)
@@ -48,25 +45,16 @@
  * Size = SER_TOTAL_PACKET_BYTES
  * ========================================================================= */
 
-/** Externally accessible serialization scratch buffer (declared in Serialization.c) */
 extern uint8_t ser_packet_buf[SER_TOTAL_PACKET_BYTES];
-
-/* =========================================================================
- * STATUS
- * ========================================================================= */
-
 typedef enum {
     SER_OK              = 0,
-    SER_ERR_MAGIC       = 1,   /**< Wrong magic bytes in received packet */
-    SER_ERR_VERSION     = 2,   /**< Unsupported protocol version */
-    SER_ERR_LENGTH      = 3,   /**< Payload length mismatch */
-    SER_ERR_CRC         = 4,   /**< CRC-16 mismatch */
-    SER_ERR_BUFFER      = 5,   /**< Buffer too small */
+    SER_ERR_MAGIC       = 1,   //< Wrong magic bytes in received packet 
+    SER_ERR_VERSION     = 2,   //< Unsupported protocol version 
+    SER_ERR_LENGTH      = 3,   //< Payload length mismatch 
+    SER_ERR_CRC         = 4,   //< CRC-16 mismatch 
+    SER_ERR_BUFFER      = 5,   //< Buffer too small 
 } SER_Status_t;
 
-/* =========================================================================
- * PUBLIC API
- * ========================================================================= */
 
 /**
  * @brief  Serialize NN weights into the binary FL packet format.

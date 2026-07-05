@@ -3,10 +3,7 @@
 #include "Utils.h"
 #include <string.h>
 
-/* ACK sequence expected from aggregation server */
 static const uint8_t _ack_seq[2] = { FLC_ACK_BYTE0, FLC_ACK_BYTE1 };
-
-/* State string helper */
 
 const char *FLC_StateStr(FLC_State_t state)
 {
@@ -20,10 +17,6 @@ const char *FLC_StateStr(FLC_State_t state)
         default:                    return "UNKNOWN";
     }
 }
-
-/* =========================================================================
- * INITIALIZATION
- * ========================================================================= */
 
 void FLC_Init(FLC_Handle_t *flc, NN_Handle_t *nn, UART_HandleTypeDef *huart)
 {
@@ -41,10 +34,6 @@ void FLC_Init(FLC_Handle_t *flc, NN_Handle_t *nn, UART_HandleTypeDef *huart)
     LOG_INF("  FL_LOCAL_EPOCHS=%u, FL_MAX_RETRIES=%u", FL_LOCAL_EPOCHS, FL_MAX_RETRIES);
 #endif
 }
-
-/* =========================================================================
- * SAMPLE SUBMISSION
- * ========================================================================= */
 
 uint8_t FLC_SubmitSample(FLC_Handle_t *flc,
                           const float feature[FEATURE_VECTOR_SIZE],
@@ -82,10 +71,6 @@ uint8_t FLC_SubmitSample(FLC_Handle_t *flc,
     return 1U;
 }
 
-/* =========================================================================
- * FSM TICK
- * ========================================================================= */
-
 void FLC_Tick(FLC_Handle_t *flc)
 {
     switch (flc->state) {
@@ -99,7 +84,6 @@ void FLC_Tick(FLC_Handle_t *flc)
 
         case FLC_STATE_UPLOADING:
 #if FL_STANDALONE_MODE
-            /* ── STANDALONE: skip upload entirely, go straight to IDLE ── */
             LOG_INF("FL: [STANDALONE] skipping upload, continuing locally");
             flc->round_count++;
             memset(&flc->train_buf, 0, sizeof(FLC_TrainingBuffer_t));
@@ -112,7 +96,6 @@ void FLC_Tick(FLC_Handle_t *flc)
 
         case FLC_STATE_DOWNLOADING:
 #if FL_STANDALONE_MODE
-            /* Should never reach here in standalone mode */
             flc->state = FLC_STATE_IDLE;
 #else
             FLC_DoDownload(flc);
@@ -130,10 +113,6 @@ void FLC_Tick(FLC_Handle_t *flc)
             break;
     }
 }
-
-/* =========================================================================
- * TRAINING PHASE
- * ========================================================================= */
 
 void FLC_DoTraining(FLC_Handle_t *flc)
 {
@@ -159,7 +138,6 @@ void FLC_DoTraining(FLC_Handle_t *flc)
             (double)flc->last_round_loss, flc->total_samples);
 
 #if FL_STANDALONE_MODE
-    /* In standalone mode, training IS the complete round */
     LOG_INF("FL: TRAINING → UPLOADING (standalone: will skip)");
 #else
     LOG_INF("FL: TRAINING → UPLOADING");
@@ -168,17 +146,12 @@ void FLC_DoTraining(FLC_Handle_t *flc)
     flc->state = FLC_STATE_UPLOADING;
 }
 
-/* =========================================================================
- * UPLOAD PHASE  (only compiled/used in connected mode)
- * ========================================================================= */
-
 #if !FL_STANDALONE_MODE
 
 void FLC_DoUpload(FLC_Handle_t *flc)
 {
     LOG_INF("FL: UPLOADING weights (%u bytes)...", SER_TOTAL_PACKET_BYTES);
 
-    /* Serialize weights */
     SER_Status_t ser_status = SER_SerializeWeights(
         flc->nn,
         FL_PACKET_MAGIC_UPLOAD,
@@ -193,12 +166,11 @@ void FLC_DoUpload(FLC_Handle_t *flc)
         return;
     }
 
-    /* Transmit over UART1 */
     HAL_StatusTypeDef tx_ret = HAL_UART_Transmit(
         flc->huart_fl,
         ser_packet_buf,
         SER_TOTAL_PACKET_BYTES,
-        10000U   /* 10 s TX timeout — generous for 32 KB at 921600 baud */
+        10000U   
     );
 
     if (tx_ret != HAL_OK) {
@@ -207,10 +179,8 @@ void FLC_DoUpload(FLC_Handle_t *flc)
         _FLC_HandleUploadFailure(flc);
         return;
     }
-
     LOG_INF("FL: upload TX complete, waiting for ACK...");
 
-    /* Wait for 2-byte ACK */
     uint8_t ack_buf[2] = {0U, 0U};
     HAL_StatusTypeDef rx_ret = HAL_UART_Receive(
         flc->huart_fl,
@@ -234,16 +204,11 @@ void FLC_DoUpload(FLC_Handle_t *flc)
         return;
     }
 
-    /* ACK received — proceed to download */
     flc->upload_fails     = 0U;
     flc->server_connected = 1U;
     LOG_INF("FL: ACK received — UPLOADING → DOWNLOADING");
     flc->state = FLC_STATE_DOWNLOADING;
 }
-
-/* =========================================================================
- * DOWNLOAD PHASE
- * ========================================================================= */
 
 void FLC_DoDownload(FLC_Handle_t *flc)
 {
@@ -286,10 +251,6 @@ void FLC_DoDownload(FLC_Handle_t *flc)
     FLC_PrintStatus(flc);
 }
 
-/* =========================================================================
- * UPLOAD FAILURE HANDLER — retry logic
- * ========================================================================= */
-
 void _FLC_HandleUploadFailure(FLC_Handle_t *flc)
 {
     flc->server_connected = 0U;
@@ -298,26 +259,19 @@ void _FLC_HandleUploadFailure(FLC_Handle_t *flc)
         LOG_ERR("FL: upload failed %u/%u times — switching to local-only mode",
                 flc->upload_fails, FL_MAX_RETRIES);
         LOG_ERR("FL: weights are trained locally, continuing data collection");
-        /* Don't discard training — keep weights, reset buffer, go IDLE */
         flc->upload_fails = 0U;
-        flc->round_count++;   /* Count as a local-only round */
+        flc->round_count++;   
         memset(&flc->train_buf, 0, sizeof(FLC_TrainingBuffer_t));
         flc->state = FLC_STATE_IDLE;
         FLC_PrintStatus(flc);
     } else {
         LOG_ERR("FL: retry %u/%u — will attempt upload again next tick",
                 flc->upload_fails, FL_MAX_RETRIES);
-        /* Stay in UPLOADING state to retry immediately next FLC_Tick() call */
-        /* But first, delay briefly to avoid hammering the UART */
         HAL_Delay(500U);
     }
 }
 
-#endif /* !FL_STANDALONE_MODE */
-
-/* =========================================================================
- * UTILITY
- * ========================================================================= */
+#endif 
 
 void FLC_TriggerUpload(FLC_Handle_t *flc)
 {

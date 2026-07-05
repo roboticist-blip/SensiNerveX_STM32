@@ -9,32 +9,20 @@
 
 #define SDCARD_BLOCK_SIZE      512U
 
-/** SD peripheral handle — local to this module. Nothing above SDCard.c
- *  (i.e. diskio.c, DataLogger.c, main.c) ever touches SD_HandleTypeDef
- *  directly, which is the point of the abstraction. */
 static SD_HandleTypeDef s_hsd;
 static uint8_t          s_initialized = 0U;
 
 static void SDCard_GPIO_Init(void);
 static void SDCard_GPIO_DeInit(void);
 
-/* =========================================================================
- * CARD DETECT (optional — off by default, see Config.h)
- * ========================================================================= */
-
 uint8_t SDCard_IsPresent(void)
 {
 #if (SD_DETECT_GPIO_ENABLE)
-    /* Active-low detect switch, internal pull-up assumed enabled in GPIO init */
     return (HAL_GPIO_ReadPin(SD_DETECT_GPIO_PORT, SD_DETECT_GPIO_PIN) == GPIO_PIN_RESET) ? 1U : 0U;
 #else
     return 1U;
 #endif
 }
-
-/* =========================================================================
- * GPIO / PERIPHERAL CLOCK CONFIG
- * ========================================================================= */
 
 static void SDCard_GPIO_Init(void)
 {
@@ -44,9 +32,6 @@ static void SDCard_GPIO_Init(void)
     __HAL_RCC_GPIOD_CLK_ENABLE();
     __HAL_RCC_SDIO_CLK_ENABLE();
 
-    /* PC8..PC12 = D0,D1,D2,D3,CK — AF12, push-pull, very high speed, pull-up
-     * (external pull-ups are also present on most SD sockets; internal
-     * pull-ups here guard against a card being removed mid-transfer). */
     gpio.Pin       = GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
     gpio.Mode      = GPIO_MODE_AF_PP;
     gpio.Pull      = GPIO_PULLUP;
@@ -54,12 +39,10 @@ static void SDCard_GPIO_Init(void)
     gpio.Alternate = GPIO_AF12_SDIO;
     HAL_GPIO_Init(GPIOC, &gpio);
 
-    /* PD2 = CMD — AF12 */
     gpio.Pin       = GPIO_PIN_2;
     HAL_GPIO_Init(GPIOD, &gpio);
 
 #if (SD_DETECT_GPIO_ENABLE)
-    /* Optional card-detect input, active low, internal pull-up */
     GPIO_InitTypeDef det = {0};
     det.Pin  = SD_DETECT_GPIO_PIN;
     det.Mode = GPIO_MODE_INPUT;
@@ -75,10 +58,6 @@ static void SDCard_GPIO_DeInit(void)
     __HAL_RCC_SDIO_CLK_DISABLE();
 }
 
-/* =========================================================================
- * INIT / DEINIT
- * ========================================================================= */
-
 SDCard_Status_t SDCard_Init(void)
 {
     if (!SDCard_IsPresent()) {
@@ -86,14 +65,6 @@ SDCard_Status_t SDCard_Init(void)
         return SDCARD_ERR_NOT_PRESENT;
     }
 
-    /* SDCard_Init() gets called again every time FatFs runs
-     * disk_initialize() — which is every f_mount() AND every f_mkfs()
-     * call, not just once at boot. Format-then-immediately-remount (see
-     * DataLogger_Mount()) can trigger this 2-3 times within a single
-     * mount attempt. Without a clean teardown first, memset()'ing
-     * s_hsd and re-running HAL_SD_Init() on top of a handle that HAL
-     * still considers live is undefined — deinit first so every call
-     * genuinely starts from a clean peripheral/card state. */
     if (s_initialized) {
         SDCard_DeInit();
     }
@@ -105,10 +76,9 @@ SDCard_Status_t SDCard_Init(void)
     s_hsd.Init.ClockEdge           = SDIO_CLOCK_EDGE_RISING;
     s_hsd.Init.ClockBypass         = SDIO_CLOCK_BYPASS_DISABLE;
     s_hsd.Init.ClockPowerSave      = SDIO_CLOCK_POWER_SAVE_DISABLE;
-    s_hsd.Init.BusWide             = SDIO_BUS_WIDE_1B;   /* 1-bit during identification */
+    s_hsd.Init.BusWide             = SDIO_BUS_WIDE_1B;  
     s_hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-    /* SDIO_CK = SDIOCLK / (2 + ClockDiv). ClockDiv=118 → 48 MHz/120 ≈ 400 kHz
-     * for card identification, matching the SD spec's <400 kHz init clock. */
+
     s_hsd.Init.ClockDiv            = SDIO_INIT_CLK_DIV;
 
     if (HAL_SD_Init(&s_hsd) != HAL_OK) {
@@ -118,8 +88,6 @@ SDCard_Status_t SDCard_Init(void)
     }
 
 #if (SD_USE_4BIT_BUS)
-    /* Switch to full speed + 4-bit wide bus now that the card is enumerated.
-     * SDIO_TRANSFER_CLK_DIV (0) → 48 MHz / (0+2) = 24 MHz, within Class-10 spec. */
     s_hsd.Init.ClockDiv = SDIO_TRANSFER_CLK_DIV;
     (void)HAL_SD_ConfigWideBusOperation(&s_hsd, SDIO_BUS_WIDE_4B);
 #endif
@@ -155,10 +123,6 @@ SDCard_Status_t SDCard_WaitReady(uint32_t timeout_ms)
     return SDCARD_OK;
 }
 
-/* =========================================================================
- * BLOCK I/O
- * ========================================================================= */
-
 SDCard_Status_t SDCard_ReadBlocks(uint8_t *dst, uint32_t start_block, uint32_t count)
 {
     if (!s_initialized) return SDCARD_ERR_INIT;
@@ -174,8 +138,6 @@ SDCard_Status_t SDCard_WriteBlocks(const uint8_t *src, uint32_t start_block, uin
 {
     if (!s_initialized) return SDCARD_ERR_INIT;
 
-    /* HAL_SD_WriteBlocks() takes a non-const pointer (DMA source) — the
-     * driver never mutates caller data, so the cast is safe. */
     if (HAL_SD_WriteBlocks(&s_hsd, (uint8_t *)src, start_block, count, SD_INIT_TIMEOUT_MS) != HAL_OK) {
         LOG_ERR("SD: write failed at block %lu (%lu blocks)", start_block, count);
         return SDCARD_ERR_WRITE;

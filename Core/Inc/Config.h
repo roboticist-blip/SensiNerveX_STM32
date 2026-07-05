@@ -9,35 +9,23 @@
 #define FL_STANDALONE_MODE         1U
 #define FL_MAX_RETRIES             3U
 
-/* =========================================================================
- * SYSTEM CLOCK & TIMING
- * ========================================================================= */
-
+//SYSTEM CLOCK & TIMING
 #define SYS_CORE_CLOCK_HZ          168000000UL
 #define IMU_SAMPLE_RATE_HZ         100U
 #define IMU_SAMPLE_PERIOD_S        (1.0f / IMU_SAMPLE_RATE_HZ)
 #define FEATURE_WINDOW_SECONDS     1U
 #define FEATURE_WINDOW_SAMPLES     (IMU_SAMPLE_RATE_HZ * FEATURE_WINDOW_SECONDS)
 
-/* =========================================================================
- * FEATURE EXTRACTION
- * ========================================================================= */
-
+//FEATURE EXTRACTION
 #define FEATURE_VECTOR_SIZE        500U
 #define IMU_RAW_AXES               6U
 #define ZSCORE_EPSILON             1e-7f
 
-/* =========================================================================
- * COMPLEMENTARY FILTER
- * ========================================================================= */
-
+//COMPLEMENTARY FILTER
 #define CF_ALPHA                   0.98f
 #define GRAVITY_MSS                9.80665f
 
-/* =========================================================================
- * NEURAL NETWORK
- * ========================================================================= */
-
+//NEURAL NETWORK
 #define NN_INPUT_SIZE              FEATURE_VECTOR_SIZE
 #define NN_HIDDEN_SIZE             16U
 #define NN_OUTPUT_SIZE             3U
@@ -55,10 +43,7 @@
  */
 #define FL_LOCAL_EPOCHS            10U
 
-/* =========================================================================
- * FEDERATED LEARNING PACKET
- * ========================================================================= */
-
+//FEDERATED LEARNING PACKET
 #define FL_WEIGHT_COUNT            (NN_INPUT_SIZE * NN_HIDDEN_SIZE + \
                                     NN_HIDDEN_SIZE + \
                                     NN_HIDDEN_SIZE * NN_OUTPUT_SIZE + \
@@ -68,19 +53,11 @@
 #define FL_CRC16_POLY              0x1021U
 #define FL_CRC16_INIT              0xFFFFU
 
-/* =========================================================================
- * UART
- * ========================================================================= */
-
 #define UART_DEBUG_BAUD            115200U
 #define UART_FL_BAUD               921600U
 #define UART_TX_TIMEOUT_MS         100U
 #define UART_RX_TIMEOUT_MS         5000U
 #define UART_MAX_PAYLOAD_BYTES     (FL_WEIGHT_COUNT * 4U + 16U)
-
-/* =========================================================================
- * I2C / MPU6050
- * ========================================================================= */
 
 #define MPU6050_I2C_ADDR           0x68U
 #define MPU6050_I2C_ADDR_SHIFTED   (MPU6050_I2C_ADDR << 1)
@@ -92,23 +69,12 @@
 #define MPU6050_CALIBRATION_SAMPLES 200U
 #define MPU6050_DLPF_CFG           3U
 
-/* =========================================================================
- * SD CARD (SDIO) / FATFS DATA LOGGING
- *
- * Board: WeAct Studio STM32F405RGT6. SDIO pins are fixed by silicon:
- *   D0..D3 = PC8..PC11, CK = PC12, CMD = PD2 (see SDCard.h for full map).
- * ========================================================================= */
 
-/** Master switch — set to 0 to compile the entire logging path out
- *  (SDCard.c/diskio.c/DataLogger.c become no-ops via DataLogger's stubs). */
+//Master switch — set to 0 to compile the entire logging path out
 #define SD_LOGGING_ENABLE          1U
 
-/** Use 4-bit wide SDIO bus (faster) vs 1-bit. Named to avoid colliding
- *  with the HAL/LL register-value macro of the same suffix. */
 #define SD_USE_4BIT_BUS            1U
 
-/** Optional physical card-detect switch. Most WeAct microSD sockets don't
- *  expose one — leave at 0 and SDCard_IsPresent() always returns "present". */
 #define SD_DETECT_GPIO_ENABLE      0U
 #define SD_DETECT_GPIO_PORT        GPIOB
 #define SD_DETECT_GPIO_PIN         GPIO_PIN_2
@@ -116,82 +82,45 @@
 #define SD_INIT_TIMEOUT_MS         2000U
 #define SD_MOUNT_RETRY_COUNT       3U
 
-/** How often DataLogger forces an fflush()+f_sync() while a file is open.
- *  Balances data-loss risk (on power loss) against SD wear/latency. */
 #define SD_LOG_FLUSH_INTERVAL_MS   5000U
 
 #define SD_LOG_DIR                 "LOGS"
 
-/** IMPORTANT: the vendored FatFs config (Middlewares/Third_Party/FatFs/
- *  src/ffconf.h) has _USE_LFN 0 — 8.3 short filenames only, max 8 chars
- *  before the dot. Session files are named PREFIX + 5-digit index + .CSV
- *  (see DataLogger.c DataLogger_OpenSessionFile), so
- *  strlen(SD_LOG_FILE_PREFIX) + 5 MUST be <= 8, or every f_stat() probe
- *  in the free-slot search returns FR_INVALID_NAME instead of FR_NO_FILE
- *  and the search silently exhausts all 99999 candidates without ever
- *  opening a file. "SNX" (3 chars) + 5 digits = 8 — exactly at the limit. */
 #define SD_LOG_FILE_PREFIX         "SNX"
 _Static_assert(sizeof(SD_LOG_FILE_PREFIX) - 1U + 5U <= 8U,
     "SD_LOG_FILE_PREFIX too long for an 8.3 short filename (prefix + 5 digits must fit in 8 chars)");
 
 #define SD_LOG_MAX_ROW_LEN         160U
 
-/** Raw-dataset file: one row per inference window (label + prediction +
- *  full FEATURE_VECTOR_SIZE-length feature vector), for external
- *  retraining / publication reproducibility. Independent directory and
- *  session counter from the LOG file above (DATA00001.CSV vs
- *  SNX00001.CSV) — the two are unrelated artifacts written at different
- *  granularities and there's no reason their session numbers should be
- *  coupled. See DataLogger_LogRawWindow(). */
 #define SD_DATA_DIR                "DATA"
 
 #define SD_DATA_FILE_PREFIX        "DAT"
 _Static_assert(sizeof(SD_DATA_FILE_PREFIX) - 1U + 5U <= 8U,
     "SD_DATA_FILE_PREFIX too long for an 8.3 short filename (prefix + 5 digits must fit in 8 chars)");
 
-/** Depth of the in-RAM ring buffer that decouples "producers" (the 1 Hz
- *  window loop, the FL FSM) from the SD write, which can block for several
- *  milliseconds. This is what keeps SD logging from stealing IMU sample
- *  timing — see DataLogger.h. */
+
 #define SD_LOG_QUEUE_DEPTH         16U
 
-/* =========================================================================
+/* 
  * SCALABILITY / MODULE FRAMEWORK
- *
  * main.c drives a small, fixed-size table of AppModule_t entries instead
  * of hand-written per-subsystem calls. Adding a new subsystem (another
  * sensor, a second storage backend, a Wi-Fi/BLE transport, ...) means
  * writing one Init/Tick pair and adding one line to the table in main.c —
  * the main loop itself never grows. See AppModule.h.
- * ========================================================================= */
+ */
 
 #define APP_MAX_MODULES            8U
-
-/* =========================================================================
- * MEMORY & BUFFERS
- * ========================================================================= */
 
 #define IMU_RING_BUFFER_DEPTH      128U
 #define DEBUG_LOG_BUF_SIZE         128U
 #define LOSS_HISTORY_LEN           16U
 
-/* =========================================================================
- * CLASS LABELS
- * ========================================================================= */
-
 #define CLASS_NORMAL               0U
 #define CLASS_IMBALANCE            1U
 #define CLASS_LOOSENESS            2U
 
-/* =========================================================================
- * DEBUG LEVEL (0=off, 1=errors only, 2=info, 3=verbose)
- * ========================================================================= */
-
 #define DEBUG_LEVEL                2U
-
-/* =========================================================================
- * COMPILE-TIME ASSERTIONS
- * ========================================================================= */
 
 _Static_assert(FEATURE_VECTOR_SIZE == 500U, "FEATURE_VECTOR_SIZE must be 500");
 _Static_assert(FL_LOCAL_EPOCHS > 0U, "FL_LOCAL_EPOCHS must be >= 1");

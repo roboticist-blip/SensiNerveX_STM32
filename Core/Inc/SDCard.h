@@ -5,30 +5,8 @@
  * Target hardware: WeAct Studio STM32F405RGT6 core board.
  * Peripheral:       SDIO (STM32F405 has a single SDIO controller, not SDMMC).
  *
- * Pin map (fixed by silicon — cannot be remapped on F405):
- *
- *   Signal      MCU Pin   AF        Notes
- *   ----------  --------  --------  --------------------------------
- *   SDIO_D0     PC8       AF12      Data line 0 (also used for 1-bit mode)
- *   SDIO_D1     PC9       AF12      Data line 1 (4-bit mode only)
- *   SDIO_D2     PC10      AF12      Data line 2 (4-bit mode only)
- *   SDIO_D3     PC11      AF12      Data line 3 (4-bit mode only)
- *   SDIO_CK     PC12      AF12      Clock
- *   SDIO_CMD    PD2       AF12      Command
- *   SD_DETECT   see Config.h        Optional card-detect GPIO (active low)
- *
- * All data/clock/cmd lines need external pull-ups (10 kΩ) to 3.3 V; most
- * microSD breakout boards and the WeAct socket already provide these.
- *
- * This module is a thin, testable wrapper around HAL_SD. It intentionally
- * exposes a small, storage-agnostic block API (init/read/write/status) so
- * that the FatFs glue layer (diskio.c) — and therefore every module above
- * it — never has to know about SDIO/HAL_SD directly. That indirection is
- * what lets the storage backend be swapped later (e.g. SPI-mode SD, external
- * NOR flash) without touching FatFs or the application layer.
- *
  * @author  SensiNerveX Project
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 #ifndef SDCARD_H
@@ -38,23 +16,16 @@
 #include "stm32f4xx_hal.h"
 #include "Config.h"
 
-/* =========================================================================
- * STATUS CODES
- * ========================================================================= */
 
 typedef enum {
     SDCARD_OK              = 0,
-    SDCARD_ERR_INIT        = 1,   /**< HAL_SD_Init / InitCard failed        */
-    SDCARD_ERR_TIMEOUT     = 2,   /**< Card did not reach TRANSFER state    */
+    SDCARD_ERR_INIT        = 1,   
+    SDCARD_ERR_TIMEOUT     = 2,   
     SDCARD_ERR_READ        = 3,
     SDCARD_ERR_WRITE       = 4,
-    SDCARD_ERR_NOT_PRESENT = 5,   /**< Card-detect pin reports no card      */
-    SDCARD_ERR_WIDEBUS     = 6,   /**< 4-bit bus width negotiation failed   */
+    SDCARD_ERR_NOT_PRESENT = 5,   
+    SDCARD_ERR_WIDEBUS     = 6,   
 } SDCard_Status_t;
-
-/* =========================================================================
- * PUBLIC API
- * ========================================================================= */
 
 /**
  * @brief  Configure SDIO GPIO/clock and bring the card into data-transfer

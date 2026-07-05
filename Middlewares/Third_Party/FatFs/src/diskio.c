@@ -8,9 +8,8 @@
 /* attached to the FatFs via a glue function rather than modifying it.   */
 /* This is an example of glue functions to attach various existing      */
 /* storage control modules to the FatFs module with a defined API.       */
-/*-----------------------------------------------------------------------*/
 
-/* Includes ------------------------------------------------------------------*/
+
 #include "diskio.h"
 #include "ff_gen_drv.h"
 
@@ -20,13 +19,7 @@
 #endif
 #endif
 
-/* Private typedef -----------------------------------------------------------*/
-/* Private define ------------------------------------------------------------*/
-/* Private variables ---------------------------------------------------------*/
 extern Disk_drvTypeDef  disk;
-
-/* Private function prototypes -----------------------------------------------*/
-/* Private functions ---------------------------------------------------------*/
 
 /**
   * @brief  Gets Disk Status
@@ -34,7 +27,7 @@ extern Disk_drvTypeDef  disk;
   * @retval DSTATUS: Operation status
   */
 DSTATUS disk_status (
-	BYTE pdrv		/* Physical drive number to identify the drive */
+	BYTE pdrv		
 )
 {
   DSTATUS stat;
@@ -139,6 +132,4 @@ __weak DWORD get_fattime (void)
 {
   return 0;
 }
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
 

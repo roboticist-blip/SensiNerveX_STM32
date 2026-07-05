@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 fed_server.py — FedVibroSense Aggregation Server for Raspberry Pi
-=================================================================
 Receives local model weights from STM32F405 node(s) over UART,
 performs Federated Averaging (FedAvg), and broadcasts the updated
 global model back to all clients.
@@ -44,7 +43,6 @@ import sys
 import csv
 import logging
 
-# ─── Protocol constants (must match Config.h) ────────────────────────────────
 MAGIC_UPLOAD    = 0xFE01
 MAGIC_DOWNLOAD  = 0xFE02
 PROTOCOL_VER    = 0x01
@@ -58,7 +56,6 @@ PACKET_SIZE     = HEADER_SIZE + PAYLOAD_BYTES + CRC_SIZE   # 32275 bytes
 ACK_BYTES       = bytes([0xAC, 0xAC])
 NACK_BYTES      = bytes([0x0A, 0xCE])
 
-# ─── Logging setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-5s  %(message)s",
@@ -70,7 +67,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("FedServer")
 
-# ─── CRC-16/CCITT ─────────────────────────────────────────────────────────────
 def crc16_ccitt(data: bytes) -> int:
     """CRC-16/CCITT — must match Utils_CRC16() on STM32."""
     crc = 0xFFFF
@@ -83,7 +79,6 @@ def crc16_ccitt(data: bytes) -> int:
                 crc = (crc << 1) & 0xFFFF
     return crc
 
-# ─── Packet receive ───────────────────────────────────────────────────────────
 def receive_packet(ser: serial.Serial, client_id: int) -> np.ndarray:
     """
     Block until a complete FL upload packet is received from the STM32.
@@ -107,7 +102,6 @@ def receive_packet(ser: serial.Serial, client_id: int) -> np.ndarray:
             f"after {elapsed:.1f}s — check baud rate and UART wiring"
         )
 
-    # ── Parse header ────────────────────────────────────────────────────────
     magic    = struct.unpack_from('<H', raw, 0)[0]
     version  = raw[2]
     n_weights = struct.unpack_from('<H', raw, 3)[0]
@@ -125,7 +119,6 @@ def receive_packet(ser: serial.Serial, client_id: int) -> np.ndarray:
             f"[Client {client_id}] Weight count mismatch: {n_weights} vs {FL_WEIGHT_COUNT}"
         )
 
-    # ── CRC validation ───────────────────────────────────────────────────────
     rx_crc   = struct.unpack_from('<H', raw, HEADER_SIZE + PAYLOAD_BYTES)[0]
     calc_crc = crc16_ccitt(raw[:HEADER_SIZE + PAYLOAD_BYTES])
     if rx_crc != calc_crc:
@@ -133,7 +126,6 @@ def receive_packet(ser: serial.Serial, client_id: int) -> np.ndarray:
             f"[Client {client_id}] CRC mismatch: received {rx_crc:#06x}, computed {calc_crc:#06x}"
         )
 
-    # ── Extract float32 weights ──────────────────────────────────────────────
     payload = raw[HEADER_SIZE : HEADER_SIZE + PAYLOAD_BYTES]
     weights = np.frombuffer(payload, dtype=np.float32).copy()
 
@@ -143,7 +135,6 @@ def receive_packet(ser: serial.Serial, client_id: int) -> np.ndarray:
     )
     return weights
 
-# ─── Packet send ──────────────────────────────────────────────────────────────
 def send_packet(ser: serial.Serial, weights: np.ndarray, client_id: int):
     """
     Serialize and transmit the global model to one client.
@@ -167,7 +158,6 @@ def send_packet(ser: serial.Serial, weights: np.ndarray, client_id: int):
         f"CRC={crc:#06x} | W1_mean={weights[:8000].mean():.6f}"
     )
 
-# ─── FedAvg ───────────────────────────────────────────────────────────────────
 def fedavg(weight_list: list) -> np.ndarray:
     """
     Simple FedAvg: element-wise mean across all client weight vectors.
@@ -180,7 +170,6 @@ def fedavg(weight_list: list) -> np.ndarray:
     avg     = np.mean(stacked, axis=0)
     return avg
 
-# ─── CSV logger ───────────────────────────────────────────────────────────────
 class RoundLogger:
     """Saves per-round aggregation statistics to a CSV for publication plots."""
 
@@ -197,7 +186,6 @@ class RoundLogger:
     def log(self, rnd: int, n_clients: int, global_w: np.ndarray,
             client_weights: list):
         w1 = global_w[:8000]
-        # Weight divergence: mean L2 distance from each client to global
         divergences = [
             float(np.linalg.norm(cw - global_w)) for cw in client_weights
         ]
@@ -212,7 +200,6 @@ class RoundLogger:
                 time.strftime("%Y-%m-%d %H:%M:%S")
             ])
 
-# ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
         description="FedVibroSense Aggregation Server",
@@ -234,7 +221,6 @@ def main():
                         help='CSV file for per-round statistics')
     args = parser.parse_args()
 
-    # ── Setup ────────────────────────────────────────────────────────────────
     if args.save_models:
         os.makedirs(args.models_dir, exist_ok=True)
         log.info(f"Model snapshots → {args.models_dir}/")
@@ -252,7 +238,6 @@ def main():
              f"{PACKET_SIZE * 10 / args.baud * 1000:.0f} ms")
     log.info("=" * 60)
 
-    # ── Open serial port ─────────────────────────────────────────────────────
     try:
         ser = serial.Serial(
             port=args.port,
@@ -260,8 +245,8 @@ def main():
             bytesize=serial.EIGHTBITS,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
-            timeout=60,        # 60 s receive timeout per packet
-            write_timeout=15,  # 15 s transmit timeout
+            timeout=60,        
+            write_timeout=15,  
         )
         log.info(f"Serial port {args.port} opened successfully")
     except serial.SerialException as e:
@@ -269,7 +254,6 @@ def main():
         log.error("Tip: check  ls /dev/tty*  and  sudo raspi-config → Serial Port")
         sys.exit(1)
 
-    # ── Main loop ────────────────────────────────────────────────────────────
     global_weights = None   # None until first round
     rnd = 0
 
@@ -284,24 +268,20 @@ def main():
             round_start = time.time()
             client_weights = []
 
-            # ── Receive from each client ──────────────────────────────────
             for c in range(1, args.clients + 1):
                 try:
                     weights = receive_packet(ser, c)
                     client_weights.append(weights)
 
-                    # Send ACK immediately after successful receive
                     ser.write(ACK_BYTES)
                     ser.flush()
                     log.info(f"  [Client {c}] ACK sent")
 
                 except RuntimeError as e:
                     log.error(f"  [Client {c}] Receive error: {e}")
-                    # Send NACK so STM32 goes to ERROR state cleanly
                     ser.write(NACK_BYTES)
                     ser.flush()
                     log.warning(f"  [Client {c}] NACK sent — client will reset and retry")
-                    # Skip this round if any client fails
                     client_weights = []
                     break
 
@@ -309,7 +289,6 @@ def main():
                 log.warning(f"Round {rnd}: incomplete ({len(client_weights)}/{args.clients} clients) — skipping FedAvg")
                 continue
 
-            # ── FedAvg aggregation ────────────────────────────────────────
             global_weights = fedavg(client_weights)
             log.info(
                 f"  FedAvg done — "
@@ -317,14 +296,12 @@ def main():
                 f"std={global_weights[:8000].std():.6f}"
             )
 
-            # ── Send global model back to all clients ─────────────────────
             for c in range(1, args.clients + 1):
                 try:
                     send_packet(ser, global_weights, c)
                 except serial.SerialTimeoutException as e:
                     log.error(f"  [Client {c}] TX timeout: {e}")
 
-            # ── Logging & saving ──────────────────────────────────────────
             round_logger.log(rnd, args.clients, global_weights, client_weights)
 
             if args.save_models:
