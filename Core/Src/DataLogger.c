@@ -58,6 +58,15 @@ AppModule_t g_datalogger_module = {
 static uint8_t DataLogger_Mount(void)
 {
     FRESULT fr = f_mount(&s_fatfs, "", 1);   /* 1 = mount now, not lazily */
+
+    if (fr == FR_NO_FILESYSTEM) {
+        /* The vendored FatFs config in this repo disables _USE_MKFS, so
+         * auto-formatting is not available here. Treat this as a mount
+         * failure and let the user format the card externally. */
+        LOG_ERR("DataLogger: no FAT filesystem found on card — card needs formatting");
+        return 0U;
+    }
+
     if (fr != FR_OK) {
         LOG_ERR("DataLogger: f_mount failed (FRESULT=%d)", (int)fr);
         return 0U;

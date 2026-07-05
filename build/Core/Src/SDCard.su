@@ -1,0 +1,8 @@
+Core/Src/SDCard.c:25:9:SDCard_IsPresent	0	static
+Core/Src/SDCard.c:126:6:SDCard_DeInit	8	static
+Core/Src/SDCard.c:135:17:SDCard_WaitReady	16	static
+Core/Src/SDCard.c:150:17:SDCard_ReadBlocks	32	static
+Core/Src/SDCard.c:161:17:SDCard_WriteBlocks	32	static
+Core/Src/SDCard.c:174:10:SDCard_GetBlockCount	40	static
+Core/Src/SDCard.c:183:6:SDCard_PrintInfo	56	static
+Core/Src/SDCard.c:82:17:SDCard_Init	56	static
