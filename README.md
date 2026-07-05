@@ -119,13 +119,20 @@ Total:     8067 params = 31.5 KB (float32)
 ## Hardware Requirements
 
 ### Primary MCU Board
-Any STM32F405RGT6 board. Tested configurations:
+**WeAct Studio STM32F405RGT6 core board** (primary target for SDIO/SD
+logging — pins below assume this board's onboard SDIO pinout). Also
+tested without SD logging on:
 - **STM32F4 Discovery** (STM32F407 variant — minor pinout adjustments needed)
 - **Nucleo-F405RG** (direct pin mapping)
 - Custom PCB with STM32F405RGT6
 
 ### Sensor
 - **InvenSense MPU-6050** breakout module (GY-521 or equivalent)
+
+### Storage
+- microSD card, Class 10 or better, FAT32-formatted (or blank — `FF_USE_MKFS`
+  is enabled so a first-boot format is possible, though pre-formatting is
+  recommended)
 
 ### Wiring
 
@@ -137,6 +144,23 @@ Any STM32F405RGT6 board. Tested configurations:
 | 3.3 V       | 3.3 V     | VCC          | 100 nF decoupling cap    |
 | GND         | GND       | GND          |                          |
 | AD0         | GND       | AD0          | I2C address = 0x68       |
+
+### SD Card (SDIO, 4-bit wide bus)
+
+| Signal    | STM32 Pin | microSD Pin | Notes                          |
+|-----------|-----------|-------------|---------------------------------|
+| SDIO_D0   | PC8       | DAT0        | 10 kΩ pull-up to 3.3 V (usually on socket) |
+| SDIO_D1   | PC9       | DAT1        | 10 kΩ pull-up to 3.3 V          |
+| SDIO_D2   | PC10      | DAT2        | 10 kΩ pull-up to 3.3 V          |
+| SDIO_D3   | PC11      | DAT3/CD     | 10 kΩ pull-up to 3.3 V          |
+| SDIO_CK   | PC12      | CLK         | No pull needed (driven by MCU)  |
+| SDIO_CMD  | PD2       | CMD         | 10 kΩ pull-up to 3.3 V          |
+| 3.3 V     | 3.3 V     | VDD         |                                 |
+| GND       | GND       | VSS         |                                 |
+
+> Pin assignments are fixed by the STM32F405's SDIO peripheral — they
+> cannot be remapped to other GPIOs. See `SDCard.h` for the full rationale.
+
 
 ### Debug / Programming
 | Signal | STM32 Pin | Host Side      |
@@ -171,21 +195,33 @@ FedVibroSense_STM32/
 │   │   ├── FeatureExtractor.h    ← Ring buffer + feature vector API
 │   │   ├── NeuralNetwork.h       ← NN training/inference API
 │   │   ├── FederatedClient.h     ← FL FSM API
-│   │   └── Serialization.h       ← Binary weight packet API
+│   │   ├── Serialization.h       ← Binary weight packet API
+│   │   ├── AppModule.h           ← Module-table scheduler interface (NEW)
+│   │   ├── SDCard.h              ← SDIO block driver API (NEW)
+│   │   ├── DataLogger.h          ← SD/FatFs logging service API (NEW)
+│   │   ├── diskio.h              ← FatFs disk-I/O interface (NEW)
+│   │   └── ffconf.h              ← FatFs configuration (NEW)
 │   │
 │   └── Src/
-│       ├── main.c                ← Application loop, HAL init, callbacks
+│       ├── main.c                ← App_Init + AppModule-driven main loop
 │       ├── MPU6050.c             ← I2C driver, calibration, burst read
 │       ├── ComplementaryFilter.c ← alpha filter, angle estimation
 │       ├── FeatureExtractor.c    ← Ring buffer, Z-score normalization
 │       ├── NeuralNetwork.c       ← Forward/backward/SGD from scratch
 │       ├── FederatedClient.c     ← FL state machine, UART comms
 │       ├── Serialization.c       ← Binary pack/unpack + CRC-16
-│       └── Utils.c               ← UART log, LCG PRNG, timer, mem stats
+│       ├── Utils.c               ← UART log, LCG PRNG, timer, mem stats
+│       ├── AppModule.c           ← Fixed-size module table impl (NEW)
+│       ├── SDCard.c              ← SDIO/HAL_SD block driver (NEW)
+│       ├── diskio.c              ← FatFs ↔ SDCard.c glue (NEW)
+│       └── DataLogger.c          ← Non-blocking SD CSV logger (NEW)
+│
+├── Middlewares/Third_Party/FatFs/src/   ← NOT included — add separately
+│   ├── ff.c / ff.h / ffunicode.c        ← See Core/Inc/ffconf.h header comment
 │
 ├── STM32CubeMX/
 │   ├── STM32F405RGTx_FLASH.ld   ← Linker script (Flash + SRAM + CCM)
-│   └── CubeMX_Config_Guide.txt  ← Exact CubeMX peripheral settings
+│   └── CubeMX_Config_Guide.txt  ← Exact CubeMX peripheral settings (incl. SDIO)
 │
 ├── cmake/
 │   └── arm-none-eabi.cmake       ← CMake cross-compilation toolchain file
@@ -201,9 +237,86 @@ Core/Src/stm32f4xx_hal_msp.c     ← GPIO/UART/I2C alt-function MSP init
 Core/Src/stm32f4xx_it.c          ← IRQ handler stubs
 Core/Src/system_stm32f4xx.c      ← SystemInit()
 Core/Inc/main.h                  ← HAL handle externs
-Core/Inc/stm32f4xx_hal_conf.h    ← HAL module enables
+Core/Inc/stm32f4xx_hal_conf.h    ← HAL module enables (HAL_SD_MODULE_ENABLED now on)
 Drivers/                         ← Full HAL + CMSIS (never edit)
 ```
+
+---
+
+## SD Card Logging (SDIO + FatFs)
+
+Every inference window and every completed FL round is now persisted to
+the microSD card as CSV, in addition to the existing UART debug log —
+useful for offline analysis (loss curves, confusion matrices, inference
+latency distributions) without needing a PC connected during a run.
+
+**Hardware**: WeAct Studio STM32F405RGT6's SDIO peripheral, 4-bit wide bus.
+Pins are fixed by silicon — see `SDCard.h` for the full map (PC8-11, PC12,
+PD2). External 10 kΩ pull-ups on CMD/D0-D3 (most microSD sockets already
+have these).
+
+**Software layers** (bottom to top — each is independently swappable):
+
+```
+main.c → DataLogger.c → diskio.c (FatFs glue) → SDCard.c → HAL_SD → SDIO peripheral
+                ↑
+         ff.c (FatFs core — third-party, add separately)
+```
+
+- **`SDCard.c`** — thin, storage-agnostic block API (`SDCard_ReadBlocks`/
+  `WriteBlocks`/`Init`) wrapping `HAL_SD`. Nothing above it knows HAL_SD
+  exists.
+- **`diskio.c`** — the standard FatFs `disk_read`/`disk_write`/`disk_ioctl`
+  contract, translated to `SDCard.c` calls. This is the *only* file that
+  bridges FatFs and our SDIO driver.
+- **`DataLogger.c`** — the module everything else actually talks to.
+  Owns session-file naming (`LOGS/SNX_00001.CSV`, auto-incrementing so
+  reboots never clobber a previous run), periodic flush policy, and
+  mount-failure retry. Critically, it fronts the SD card with a small RAM
+  ring buffer (`SD_LOG_QUEUE_DEPTH`, Config.h) so the 100 Hz IMU loop and
+  FL FSM never block on a slow card — `DataLogger_LogWindow()`/
+  `LogFLRound()` just enqueue a formatted row (µs-scale) and
+  `DataLogger_ModuleTick()` (run once per main-loop iteration) drains at
+  most one row per call.
+
+**Getting it building**: `ff.c`/`ff.h`/`ffunicode.c` (the FatFs core
+engine) are third-party middleware, not part of the ST HAL package, so
+they aren't in this repo. Add them either via STM32CubeMX (add the
+"FATFS" middleware, choose a user-defined custom disk driver so it
+doesn't overwrite `diskio.c`) or by downloading FatFs directly and
+dropping the three files into `Middlewares/Third_Party/FatFs/src/`. See
+the header comment in `Core/Inc/ffconf.h` for both paths. Until then,
+`SD_LOGGING_ENABLE` in `Config.h` can be set to `0` to build everything
+else — `DataLogger.c` compiles down to no-op stubs in that mode.
+
+**New UART commands**: `l` prints logger stats (rows written/dropped,
+write errors, remounts); `f` forces an immediate flush.
+
+---
+
+## Scalability Refactor (AppModule)
+
+The original main loop hand-sequenced every subsystem inline. As soon as
+SD logging needed to be added, that structure would have meant editing
+the loop body again — and would again for the next addition (a second
+sensor, a wireless transport, ...). `AppModule.h`/`.c` replaces that with
+a fixed-size table of `{name, init, tick}` entries (see the header for
+the full rationale). `main()`'s loop body is now:
+
+```c
+while (1) {
+    AppModule_TickAll();
+}
+```
+
+Each existing subsystem got a thin wrapper (`Mod_ImuSample_Tick`,
+`Mod_FeatureWindow_Tick`, `Mod_FLC_Tick`, `Mod_UartCommand_Tick` in
+`main.c`) so registration order still matches the original, timing-aware
+sequence (IMU sampling first, UART commands last). `DataLogger` is a
+first-class module in the same table — adding it required zero changes
+to the loop itself, which is the point: the next new subsystem gets the
+same treatment, one `Init`/`Tick` pair and one `AppModule_Register()`
+call, and the loop stays exactly this small.
 
 ---
 
@@ -211,8 +324,8 @@ Drivers/                         ← Full HAL + CMSIS (never edit)
 
 | Region   | Total   | Used (approx)  | Contents                          |
 |----------|---------|----------------|-----------------------------------|
-| Flash    | 1024 KB | ~55 KB         | Code + HAL + libm stubs           |
-| SRAM1    | 128 KB  | ~98 KB         | NN weights, FL buf, ring buf, ser buf |
+| Flash    | 1024 KB | ~65 KB         | Code + HAL + SDIO/FatFs + libm stubs |
+| SRAM1    | 128 KB  | ~101 KB        | NN weights, FL buf, ring buf, ser buf, SD log queue |
 | CCM      | 64 KB   | 0 KB (optional)| NN_Handle_t if moved to .ccmram   |
 | Stack    | 2 KB    | ~800 B         | Main loop + ISR stack             |
 
@@ -226,8 +339,10 @@ Drivers/                         ← Full HAL + CMSIS (never edit)
 | `s_nn.dW1`         | 32,000 B  | W1 gradient buffer                 |
 | `s_fe.ring`        | 2,560 B   | IMU ring buffer (128×5×4)          |
 | `s_feature_vec`    | 2,000 B   | 500-float feature vector           |
+| `s_queue` (DataLogger) | 2,560 B | SD log ring buffer (16×160 B)   |
+| `s_fatfs`/`s_file` | ~600 B    | FatFs volume + file objects (FF_FS_TINY) |
 | `s_nn.W2+b1+b2..`  | ~500 B    | Remaining NN parameters            |
-| **Total**          | **~121 KB** | Within 128 KB SRAM1 limit       |
+| **Total**          | **~124 KB** | Within 128 KB SRAM1 limit       |
 
 > **Note**: If using `dW1` and `W1` simultaneously with the `ser_packet_buf`, total peaks at ~86 KB active at once (not all simultaneously needed). If tight, move `s_nn` to CCM using `__attribute__((section(".ccmram")))`.
 
@@ -438,6 +553,7 @@ See `STM32CubeMX/CubeMX_Config_Guide.txt` for the complete step-by-step configur
 | USART1    | 921600 baud (PA9/PA10) — FL comms    |
 | TIM2      | 32-bit free-running @ 1 MHz          |
 | TIM3      | 100 Hz interrupt (IRQ priority 1)    |
+| SDIO      | 4-bit wide bus (PC8-11/PC12/PD2) — SD card |
 | PA0       | EXTI0 falling edge (MPU-6050 INT)    |
 | PD12–15   | GPIO Output (Status LEDs)            |
 
@@ -458,14 +574,23 @@ Boot
  ├── FE_Init() — ring buffer reset
  ├── MPU6050_Init() — verify WHO_AM_I, configure registers
  ├── MPU6050_Calibrate() — 2 s gyro bias collection (device stationary)
- └── Main Loop:
-      ├── [100 Hz] TIM3 ISR → g_sample_flag = 1
-      │    └── ReadScaled → CF_Update → FE_Push
-      ├── [1 Hz] FE_BuildFeatureVector → NN_Forward → predict
-      │    └── FLC_SubmitSample (if labeled)
-      ├── [event] FLC_Tick — advance FL FSM
-      └── [async] UART cmd → App_HandleUARTCommand
+ ├── AppModule_Register() × 5 — IMUSample, FeatureWindow, FLClient,
+ │      DataLogger, UARTCommand (see AppModule.h / Config.h)
+ ├── AppModule_InitAll() — DataLogger mounts SD, opens LOGS/SNX_NNNNN.CSV
+ └── Main Loop = AppModule_TickAll(), repeated forever:
+      ├── [100 Hz]  Mod_ImuSample_Tick     — ReadScaled → CF_Update → FE_Push
+      ├── [1 Hz]    Mod_FeatureWindow_Tick — FE_BuildFeatureVector → NN_Forward
+      │                                      → DataLogger_LogWindow (enqueue)
+      │                                      → FLC_SubmitSample (if labeled)
+      ├── [event]   Mod_FLC_Tick           — FLC_Tick FSM step, logs round
+      │                                      summary via DataLogger_LogFLRound
+      ├── [tick]    DataLogger tick        — drains ≤1 queued SD row, flushes
+      │                                      on SD_LOG_FLUSH_INTERVAL_MS
+      └── [async]   Mod_UartCommand_Tick   — App_HandleUARTCommand
 ```
+
+Adding a new subsystem means one `AppModule_Register()` call — this loop
+body doesn't need to change again. See "Scalability Refactor" above.
 
 ### Timing Budget per 100 Hz Cycle (10 ms budget)
 

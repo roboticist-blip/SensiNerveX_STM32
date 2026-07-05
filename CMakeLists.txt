@@ -62,7 +62,14 @@ set(CUSTOM_SOURCES
     Core/Src/Serialization.c
     Core/Src/FederatedClient.c
     Core/Src/Utils.c
+    Core/Src/AppModule.c
+    Core/Src/SDCard.c
+    Core/Src/diskio.c
+    Core/Src/DataLogger.c
 )
+# DataLogger.c only #includes "ff.h" when Config.h's SD_LOGGING_ENABLE is 1
+# (the shipped default). Add the FatFs core (see FATFS_SOURCES below) or
+# set SD_LOGGING_ENABLE to 0 before configuring if you haven't added it yet.
 
 # CubeMX-generated application stubs
 set(CUBE_SOURCES
@@ -87,6 +94,22 @@ set(HAL_SOURCES
     Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c
     Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c
     Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c
+    Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_sd.c
+    Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_sdmmc.c
+)
+# stm32f4xx_hal_sd.c + ll_sdmmc.c: SDIO block driver for the WeAct
+# STM32F405RGT6 microSD socket. Requires HAL_SD_MODULE_ENABLED, already
+# turned on in Core/Inc/stm32f4xx_hal_conf.h.
+
+# FatFs core — third-party middleware, NOT included in this repo. Add it
+# at Middlewares/Third_Party/FatFs/src/ (via STM32CubeMX's FATFS
+# middleware or a direct download — see Core/Inc/ffconf.h header comment)
+# and this glob will pick it up automatically; otherwise it's silently
+# empty and DataLogger.c's "ff.h" include will fail at configure/build
+# time if SD_LOGGING_ENABLE is left at its default of 1 in Config.h.
+file(GLOB FATFS_SOURCES
+    ${CMAKE_SOURCE_DIR}/Middlewares/Third_Party/FatFs/src/ff.c
+    ${CMAKE_SOURCE_DIR}/Middlewares/Third_Party/FatFs/src/ffunicode.c
 )
 
 # Startup assembly file
@@ -103,6 +126,7 @@ set(INCLUDE_DIRS
     Drivers/STM32F4xx_HAL_Driver/Inc/Legacy
     Drivers/CMSIS/Device/ST/STM32F4xx/Include
     Drivers/CMSIS/Include
+    Middlewares/Third_Party/FatFs/src
 )
 
 # ============================================================================
@@ -117,6 +141,7 @@ add_executable(${PROJECT_NAME}.elf
     ${CUSTOM_SOURCES}
     ${CUBE_SOURCES}
     ${HAL_SOURCES}
+    ${FATFS_SOURCES}
     ${STARTUP_SOURCE}
 )
 

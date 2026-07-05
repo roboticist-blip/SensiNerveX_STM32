@@ -120,6 +120,50 @@ NOTE: At 921600 baud, wire length should be < 1 m.
       Use a USB-UART adapter with CP2102/CH340 on the server side.
 
 ==============================================================================
+STEP 7.5: SDIO CONFIGURATION (microSD Card — WeAct STM32F405RGT6 socket)
+==============================================================================
+
+Mode:              SD 4 bits Wide bus
+Clock Edge:        Rising
+Clock Bypass:      Disable
+Clock Power Save:  Disable
+Hardware Flow Ctrl: Disable
+
+GPIO Pins (fixed by silicon on the F405 — CubeMX auto-assigns these,
+verify they match; they cannot be moved to other pins):
+  PC8   →  SDIO_D0   (AF12, Push-Pull, Pull-Up, Very High Speed)
+  PC9   →  SDIO_D1   (AF12, Push-Pull, Pull-Up, Very High Speed)
+  PC10  →  SDIO_D2   (AF12, Push-Pull, Pull-Up, Very High Speed)
+  PC11  →  SDIO_D3   (AF12, Push-Pull, Pull-Up, Very High Speed)
+  PC12  →  SDIO_CK   (AF12, Push-Pull, Pull-Up, Very High Speed)
+  PD2   →  SDIO_CMD  (AF12, Push-Pull, Pull-Up, Very High Speed)
+
+NOTE: If manually wiring GPIO (rather than through CubeMX's SDIO
+      peripheral pinout), SDCard.c does this init itself — see
+      SDCard_Init() / SDCard_GPIO_Init(). CubeMX's own MX_SDIO_SD_Init()
+      is NOT used by this project; SDCard.c owns the full bring-up so the
+      block driver stays self-contained and testable independent of the
+      CubeMX-generated files.
+
+Interrupts:        NOT required — this project uses blocking
+                    HAL_SD_ReadBlocks()/HAL_SD_WriteBlocks() (see
+                    SDCard.h "WaitReady" comment for why blocking is
+                    acceptable here: DataLogger.c's queue already bounds
+                    the worst-case stall to one row per main-loop tick).
+
+External hardware: 10 kΩ pull-ups to 3.3 V on CMD/D0-D3 (most microSD
+                    breakout boards already include these).
+
+Middleware:        Add "FATFS" middleware in CubeMX with a "User defined"
+                    custom disk driver (since diskio.c in this repo
+                    already implements the STM32F405-specific glue —
+                    don't let CubeMX generate its own bsp_driver_sd.c/
+                    sd_diskio.c, which would conflict with SDCard.c).
+                    This is also how ff.c/ff.h get added to the project —
+                    see Core/Inc/ffconf.h header comment for the manual
+                    alternative if you're not using CubeMX at all.
+
+==============================================================================
 STEP 8: TIM2 CONFIGURATION (Microsecond Timer)
 ==============================================================================
 
@@ -223,7 +267,20 @@ Generated file structure CubeMX will produce:
     Core/Src/Serialization.c
     Core/Src/FederatedClient.c
     Core/Src/Utils.c
+    Core/Src/AppModule.c            (module-table scheduler — see AppModule.h)
+    Core/Src/SDCard.c               (SDIO block driver)
+    Core/Src/diskio.c               (FatFs <-> SDCard.c glue)
+    Core/Src/DataLogger.c           (SD/FatFs logging service)
     Core/Inc/*.h  (all custom headers)
+
+  THIRD-PARTY (add via CubeMX's FATFS middleware, or download directly —
+  see Core/Inc/ffconf.h header comment):
+    Middlewares/Third_Party/FatFs/src/ff.c
+    Middlewares/Third_Party/FatFs/src/ff.h
+    Middlewares/Third_Party/FatFs/src/ffunicode.c
+    (Core/Inc/ffconf.h and Core/Inc/diskio.h are already provided in this
+     repo, pre-wired to SDCard.c — do not let CubeMX overwrite them with
+     its own templates.)
 
 ==============================================================================
 STEP 13: OPTIMIZATION SETTINGS
@@ -241,12 +298,16 @@ STEP 14: MEMORY MAP VERIFICATION
 After building, verify with: arm-none-eabi-size --format=berkeley build/FedVibroSense.elf
 
 Expected approximate usage:
-  .text  (Flash):  ~45–60 KB   (HAL + custom code + libm stubs)
+  .text  (Flash):  ~55–75 KB   (HAL + SDIO/FatFs + custom code + libm stubs)
   .data  (RAM):    ~1 KB
-  .bss   (RAM):    ~90–100 KB  (NN weights 32 KB + FL buf 20 KB + ring buf 3 KB + ser buf 32 KB)
+  .bss   (RAM):    ~93–103 KB  (NN weights 32 KB + FL buf 20 KB + ring buf 3 KB +
+                                 ser buf 32 KB + SD log queue ~2.5 KB + FatFs
+                                 sector/FIL objects ~1 KB)
 
 STM32F405 has 192 KB total SRAM (128 KB SRAM1 + 64 KB CCM).
-Main SRAM1 (128 KB) is sufficient for all static buffers.
+Main SRAM1 (128 KB) is sufficient for all static buffers, including the
+new SD logging queue (SD_LOG_QUEUE_DEPTH × SD_LOG_MAX_ROW_LEN bytes,
+~2.5 KB at the Config.h defaults).
 
 If .bss exceeds 128 KB, move NN_Handle_t to CCM:
   Add to main.c:  __attribute__((section(".ccmram"))) static NN_Handle_t s_nn;
