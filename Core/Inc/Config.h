@@ -136,6 +136,19 @@ _Static_assert(sizeof(SD_LOG_FILE_PREFIX) - 1U + 5U <= 8U,
 
 #define SD_LOG_MAX_ROW_LEN         160U
 
+/** Raw-dataset file: one row per inference window (label + prediction +
+ *  full FEATURE_VECTOR_SIZE-length feature vector), for external
+ *  retraining / publication reproducibility. Independent directory and
+ *  session counter from the LOG file above (DATA00001.CSV vs
+ *  SNX00001.CSV) — the two are unrelated artifacts written at different
+ *  granularities and there's no reason their session numbers should be
+ *  coupled. See DataLogger_LogRawWindow(). */
+#define SD_DATA_DIR                "DATA"
+
+#define SD_DATA_FILE_PREFIX        "DAT"
+_Static_assert(sizeof(SD_DATA_FILE_PREFIX) - 1U + 5U <= 8U,
+    "SD_DATA_FILE_PREFIX too long for an 8.3 short filename (prefix + 5 digits must fit in 8 chars)");
+
 /** Depth of the in-RAM ring buffer that decouples "producers" (the 1 Hz
  *  window loop, the FL FSM) from the SD write, which can block for several
  *  milliseconds. This is what keeps SD logging from stealing IMU sample
