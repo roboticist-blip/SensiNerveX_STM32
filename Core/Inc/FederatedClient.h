@@ -8,8 +8,6 @@
 #include "FeatureExtractor.h"
 #include "stm32f4xx_hal.h"
 
-/* FL client finite-state machine (IDLE, COLLECTING, TRAINING, UPLOADING, DOWNLOADING) */
-
 typedef enum {
     FLC_STATE_IDLE        = 0,
     FLC_STATE_COLLECTING  = 1,
@@ -22,19 +20,11 @@ typedef enum {
 #define FLC_ACK_BYTE0   0xACU
 #define FLC_ACK_BYTE1   0xACU
 
-/* =========================================================================
- * TRAINING BUFFER
- * ========================================================================= */
-
 typedef struct {
     float   features[FL_LOCAL_EPOCHS][FEATURE_VECTOR_SIZE];
     uint8_t labels[FL_LOCAL_EPOCHS];
     uint8_t count;
 } FLC_TrainingBuffer_t;
-
-/* =========================================================================
- * FL CLIENT HANDLE  (v1.1 adds upload_fails)
- * ========================================================================= */
 
 typedef struct {
     FLC_State_t           state;
@@ -46,12 +36,8 @@ typedef struct {
     float                 last_round_loss;
     uint8_t               server_connected;
     uint8_t               error_code;
-    uint8_t               upload_fails;    /**< Consecutive upload failures */
+    uint8_t               upload_fails;   
 } FLC_Handle_t;
-
-/* =========================================================================
- * PUBLIC API
- * ========================================================================= */
 
 void    FLC_Init(FLC_Handle_t *flc, NN_Handle_t *nn, UART_HandleTypeDef *huart);
 uint8_t FLC_SubmitSample(FLC_Handle_t *flc,
@@ -63,7 +49,6 @@ void    FLC_Reset(FLC_Handle_t *flc);
 const char *FLC_StateStr(FLC_State_t state);
 void    FLC_PrintStatus(const FLC_Handle_t *flc);
 
-/* Internal helpers */
 void    FLC_DoTraining(FLC_Handle_t *flc);
 void    FLC_DoUpload(FLC_Handle_t *flc);
 void    FLC_DoDownload(FLC_Handle_t *flc);

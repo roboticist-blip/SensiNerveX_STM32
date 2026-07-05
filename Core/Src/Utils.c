@@ -2,8 +2,8 @@
  * @file    Utils.c
  * @brief   Utility function implementations
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #include "Utils.h"
@@ -12,21 +12,9 @@
 #include <math.h>
 #include "stm32f4xx_hal.h"
 
-/* =========================================================================
- * GLOBAL LOG BUFFER (declared extern in Utils.h)
- * ========================================================================= */
-
 char _utils_log_buf[DEBUG_LOG_BUF_SIZE];
 
-/* =========================================================================
- * PRNG STATE — LCG (Numerical Recipes parameters, full-period)
- * ========================================================================= */
-
 static uint32_t _lcg_state = 0x12345678UL;
-
-/* =========================================================================
- * UART LOG WRITE
- * ========================================================================= */
 
 /**
  * @brief  Transmit a formatted log string over the debug UART.
@@ -41,38 +29,15 @@ static uint32_t _lcg_state = 0x12345678UL;
  */
 void Utils_LogWrite(const char *buf, uint16_t len)
 {
-    /* huart2 is the debug UART (PA2=TX, PA3=RX), initialized by CubeMX */
     HAL_UART_Transmit(&huart2, (uint8_t *)buf, len, UART_TX_TIMEOUT_MS);
 }
 
-/* =========================================================================
- * TIMER INITIALIZATION
- * ========================================================================= */
-
-/**
- * @brief  Configure TIM2 as a 32-bit free-running microsecond counter.
- *
- * TIM2 is a 32-bit timer on STM32F405.  With APB1 clock = 84 MHz and
- * prescaler = 83, the counter increments at 1 MHz → 1 µs resolution.
- *
- * CubeMX should generate HAL_TIM_Base_Init for TIM2.
- * This function calls HAL_TIM_Base_Start to begin counting.
- */
 void Utils_TimerInit(void)
 {
-    /* TIM2 is configured by CubeMX:
-     *   Prescaler     = 83   (APB1 timer clock 84 MHz / 84 = 1 MHz)
-     *   Counter mode  = Up
-     *   Period        = 0xFFFFFFFF (32-bit max)
-     *   Clock divison = No division
-     * Start it here: */
+
     HAL_TIM_Base_Start(&htim2);
     LOG_INF("TIM2 microsecond timer started");
 }
-
-/* =========================================================================
- * VECTOR OPERATIONS
- * ========================================================================= */
 
 /**
  * @brief  Compute L2 norm of a float vector using the Cortex-M4 FPU.
@@ -111,17 +76,6 @@ void Utils_VecClip(float *v, uint32_t n, float clip)
     }
 }
 
-/* =========================================================================
- * CRC-16/CCITT
- *
- * Polynomial: 0x1021 (x^16 + x^12 + x^5 + 1)
- * Initial value: 0xFFFF
- * No input/output reflection (non-reversed)
- * XOR out: 0x0000
- *
- * This is the standard used in XMODEM, ITU-T V.41, etc.
- * ========================================================================= */
-
 uint16_t Utils_CRC16(const uint8_t *data, uint32_t len)
 {
     uint16_t crc = FL_CRC16_INIT;
@@ -138,11 +92,6 @@ uint16_t Utils_CRC16(const uint8_t *data, uint32_t len)
     return crc;
 }
 
-/* =========================================================================
- * MEMORY DIAGNOSTICS
- * ========================================================================= */
-
-/* Linker-script exported symbols */
 extern uint32_t _estack;   /* Top of stack (from STM32F405 linker script) */
 extern uint32_t _end;      /* End of BSS / start of heap */
 
@@ -158,15 +107,9 @@ extern uint32_t _end;      /* End of BSS / start of heap */
  */
 void Utils_PrintMemoryStats(void)
 {
-    /* Get current stack pointer via ARM intrinsic */
     uint32_t sp = __get_MSP();
-
-    /* _end is the first address after BSS — approximates heap start */
     uint32_t heap_start = (uint32_t)&_end;
-
-    /* Stack top is _estack (defined in linker script) */
     uint32_t stack_top  = (uint32_t)&_estack;
-
     uint32_t used_stack = stack_top - sp;
     uint32_t free_gap   = sp - heap_start;
 
@@ -177,17 +120,16 @@ void Utils_PrintMemoryStats(void)
     LOG_INF("  Stack used:  %lu bytes", used_stack);
     LOG_INF("  Free gap:    %lu bytes", free_gap);
     LOG_INF("  NN W1 size:  %u bytes", (unsigned)(NN_INPUT_SIZE * NN_HIDDEN_SIZE * 4));
-    LOG_INF("--------------------");
 }
 
-/* =========================================================================
+/*
  * PSEUDO-RANDOM NUMBER GENERATOR
  *
  * LCG parameters: multiplier = 1664525, increment = 1013904223
  * (Numerical Recipes, 32-bit full-period LCG)
  *
  * Only used for Xavier weight initialization — not cryptographically secure.
- * ========================================================================= */
+ */
 
 void Utils_SeedRNG(uint32_t seed)
 {
@@ -203,6 +145,5 @@ void Utils_SeedRNG(uint32_t seed)
 float Utils_RandF(void)
 {
     _lcg_state = (_lcg_state * 1664525UL) + 1013904223UL;
-    /* Map to [0, 2) then shift to [-1, 1) */
     return ((float)_lcg_state / 2147483648.0f) - 1.0f;
 }

@@ -1,6 +1,6 @@
 /**
  * @file    AppModule.c
- * @brief   Fixed-size module table implementation. See AppModule.h.
+ * @brief   Fixed-size module table implementation. See AppModule.h
  */
 
 #include "AppModule.h"

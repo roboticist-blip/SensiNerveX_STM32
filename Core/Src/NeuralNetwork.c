@@ -32,8 +32,8 @@
  *    - CE loss uses log(a2 + ε) to prevent log(0)
  *    - Gradient clipping to NN_GRAD_CLIP prevents exploding gradients
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #include "NeuralNetwork.h"
@@ -41,12 +41,7 @@
 #include <string.h>
 #include <math.h>
 
-/* Cross-entropy epsilon to prevent log(0) */
 #define CE_EPS  1e-7f
-
-/* =========================================================================
- * ACTIVATION FUNCTIONS
- * ========================================================================= */
 
 /**
  * @brief  ReLU: max(0, x) applied element-wise in-place.
@@ -74,29 +69,23 @@ void NN_ReLU(float *v, uint32_t n)
  */
 void NN_Softmax(float *v, uint32_t n)
 {
-    /* Step 1: find max for numerical stability */
     float max_val = v[0];
     for (uint32_t i = 1U; i < n; i++) {
         if (v[i] > max_val) max_val = v[i];
     }
 
-    /* Step 2: exponentiate shifted values */
     float sum_exp = 0.0f;
     for (uint32_t i = 0U; i < n; i++) {
         v[i] = expf(v[i] - max_val);
         sum_exp += v[i];
     }
 
-    /* Step 3: normalize */
     float inv_sum = 1.0f / (sum_exp + CE_EPS);
     for (uint32_t i = 0U; i < n; i++) {
         v[i] *= inv_sum;
     }
 }
 
-/* =========================================================================
- * INITIALIZATION
- * ========================================================================= */
 
 /**
  * @brief  Xavier uniform weight initialization.
@@ -122,13 +111,13 @@ void NN_Init(NN_Handle_t *nn)
     memset(nn->b1, 0, sizeof(nn->b1));
     memset(nn->b2, 0, sizeof(nn->b2));
 
-    /* Xavier uniform for W1: fan_in=500, fan_out=16 */
+    // Xavier uniform for W1: fan_in=500, fan_out=16
     float limit_w1 = sqrtf(6.0f / (float)(NN_INPUT_SIZE + NN_HIDDEN_SIZE));
     for (uint32_t i = 0U; i < NN_INPUT_SIZE * NN_HIDDEN_SIZE; i++) {
         nn->W1[i] = Utils_RandF() * limit_w1;
     }
 
-    /* Xavier uniform for W2: fan_in=16, fan_out=3 */
+    // Xavier uniform for W2: fan_in=16, fan_out=3 
     float limit_w2 = sqrtf(6.0f / (float)(NN_HIDDEN_SIZE + NN_OUTPUT_SIZE));
     for (uint32_t i = 0U; i < NN_HIDDEN_SIZE * NN_OUTPUT_SIZE; i++) {
         nn->W2[i] = Utils_RandF() * limit_w2;
@@ -138,10 +127,6 @@ void NN_Init(NN_Handle_t *nn)
             NN_INPUT_SIZE, NN_HIDDEN_SIZE, NN_OUTPUT_SIZE,
             (double)limit_w1, (double)limit_w2);
 }
-
-/* =========================================================================
- * FORWARD PROPAGATION
- * ========================================================================= */
 
 /**
  * @brief  Forward pass through the two-layer network.
@@ -162,19 +147,19 @@ void NN_Forward(NN_Handle_t *nn, const float *x)
 {
     uint32_t i, j, k;
 
-    /* --- Layer 1: z1 = W1 × x + b1, a1 = ReLU(z1) ------------------- */
+    // Layer 1: z1 = W1 × x + b1, a1 = ReLU(z1)
     for (j = 0U; j < NN_HIDDEN_SIZE; j++) {
         float acc = nn->b1[j];
         const float *w1_row = &nn->W1[j * NN_INPUT_SIZE];
-        /* Critical inner loop: I=500 multiply-accumulate operations */
+        // Critical inner loop: I=500 multiply-accumulate operations
         for (i = 0U; i < NN_INPUT_SIZE; i++) {
             acc += w1_row[i] * x[i];
         }
         nn->z1[j] = acc;
-        nn->a1[j] = (acc > 0.0f) ? acc : 0.0f;  /* Inline ReLU */
+        nn->a1[j] = (acc > 0.0f) ? acc : 0.0f; 
     }
 
-    /* --- Layer 2: z2 = W2 × a1 + b2, a2 = Softmax(z2) --------------- */
+    // Layer 2: z2 = W2 × a1 + b2, a2 = Softmax(z2)
     for (k = 0U; k < NN_OUTPUT_SIZE; k++) {
         float acc = nn->b2[k];
         const float *w2_row = &nn->W2[k * NN_HIDDEN_SIZE];
@@ -185,13 +170,8 @@ void NN_Forward(NN_Handle_t *nn, const float *x)
         nn->a2[k] = acc;   /* Softmax applied below */
     }
 
-    /* Apply softmax to z2 → a2 (in-place) */
     NN_Softmax(nn->a2, NN_OUTPUT_SIZE);
 }
-
-/* =========================================================================
- * LOSS COMPUTATION
- * ========================================================================= */
 
 /**
  * @brief  Categorical cross-entropy: L = -log(a2[label] + ε)
@@ -206,9 +186,6 @@ float NN_CrossEntropyLoss(const NN_Handle_t *nn, uint8_t label)
     return -logf(p);
 }
 
-/* =========================================================================
- * BACKWARD PROPAGATION
- * ========================================================================= */
 
 /**
  * @brief  Backpropagate gradients through both layers.
@@ -237,13 +214,13 @@ void NN_Backward(NN_Handle_t *nn, const float *x, uint8_t label)
 {
     uint32_t i, j, k;
 
-    /* --- Step 1: Output layer delta ----------------------------------- */
+    // Step 1: Output layer delta
     for (k = 0U; k < NN_OUTPUT_SIZE; k++) {
         nn->delta2[k] = nn->a2[k];
     }
-    nn->delta2[label] -= 1.0f;   /* Subtract one-hot true label */
+    nn->delta2[label] -= 1.0f;   
 
-    /* --- Step 2: W2 and b2 gradients ---------------------------------- */
+    // Step 2: W2 and b2 gradients
     for (k = 0U; k < NN_OUTPUT_SIZE; k++) {
         nn->db2[k] = nn->delta2[k];
         float *dw2_row = &nn->dW2[k * NN_HIDDEN_SIZE];
@@ -252,35 +229,31 @@ void NN_Backward(NN_Handle_t *nn, const float *x, uint8_t label)
         }
     }
 
-    /* --- Step 3: Hidden layer delta ----------------------------------- */
+    // Step 3: Hidden layer delta
     for (j = 0U; j < NN_HIDDEN_SIZE; j++) {
         float d = 0.0f;
         for (k = 0U; k < NN_OUTPUT_SIZE; k++) {
-            /* W2 is stored row-major: W2[k][j] = W2[k * H + j] */
+            //W2 is stored row-major: W2[k][j] = W2[k * H + j]
             d += nn->W2[k * NN_HIDDEN_SIZE + j] * nn->delta2[k];
         }
-        /* ReLU derivative: gate by pre-activation z1 */
+        // ReLU derivative: gate by pre-activation z1 
         nn->delta1[j] = (nn->z1[j] > 0.0f) ? d : 0.0f;
     }
 
-    /* --- Step 4: W1 and b1 gradients ---------------------------------- */
+    // Step 4: W1 and b1 gradients
     for (j = 0U; j < NN_HIDDEN_SIZE; j++) {
         nn->db1[j] = nn->delta1[j];
         float *dw1_row = &nn->dW1[j * NN_INPUT_SIZE];
         float  d1j     = nn->delta1[j];
-        /* Critical inner loop: I=500 multiply-store operations */
+        // Critical inner loop: I=500 multiply-store operations
         for (i = 0U; i < NN_INPUT_SIZE; i++) {
             dw1_row[i] = x[i] * d1j;
         }
     }
 
-    /* --- Step 5: Gradient clipping on dW1 (the large gradient tensor) -- */
+    // Step 5: Gradient clipping on dW1 (the large gradient tensor)
     Utils_VecClip(nn->dW1, NN_INPUT_SIZE * NN_HIDDEN_SIZE, NN_GRAD_CLIP);
 }
-
-/* =========================================================================
- * WEIGHT UPDATE — SGD
- * ========================================================================= */
 
 /**
  * @brief  Apply SGD weight updates: W -= lr × dW, b -= lr × db
@@ -293,32 +266,24 @@ void NN_UpdateWeights(NN_Handle_t *nn)
     uint32_t i;
     float lr = nn->learning_rate;
 
-    /* W1 update — largest tensor, dominates update time */
     for (i = 0U; i < NN_INPUT_SIZE * NN_HIDDEN_SIZE; i++) {
         nn->W1[i] -= lr * nn->dW1[i];
     }
 
-    /* b1 update */
     for (i = 0U; i < NN_HIDDEN_SIZE; i++) {
         nn->b1[i] -= lr * nn->db1[i];
     }
 
-    /* W2 update */
     for (i = 0U; i < NN_HIDDEN_SIZE * NN_OUTPUT_SIZE; i++) {
         nn->W2[i] -= lr * nn->dW2[i];
     }
 
-    /* b2 update */
     for (i = 0U; i < NN_OUTPUT_SIZE; i++) {
         nn->b2[i] -= lr * nn->db2[i];
     }
 
     nn->train_step_count++;
 }
-
-/* =========================================================================
- * COMBINED TRAIN STEP
- * ========================================================================= */
 
 /**
  * @brief  Forward → Backward → Update in one call.  Returns loss.
@@ -328,7 +293,6 @@ float NN_TrainStep(NN_Handle_t *nn, const float *x, uint8_t label)
     NN_Forward(nn, x);
     float loss = NN_CrossEntropyLoss(nn, label);
 
-    /* Store loss in rolling history */
     nn->loss_history[nn->loss_history_idx] = loss;
     nn->loss_history_idx = (uint8_t)((nn->loss_history_idx + 1U) % LOSS_HISTORY_LEN);
     nn->last_loss = loss;
@@ -338,10 +302,6 @@ float NN_TrainStep(NN_Handle_t *nn, const float *x, uint8_t label)
 
     return loss;
 }
-
-/* =========================================================================
- * PREDICTION
- * ========================================================================= */
 
 /**
  * @brief  argmax(a2) — returns predicted class index.
@@ -359,10 +319,6 @@ uint8_t NN_Predict(const NN_Handle_t *nn)
     return best_idx;
 }
 
-/* =========================================================================
- * DIAGNOSTICS
- * ========================================================================= */
-
 float NN_MovingAvgLoss(const NN_Handle_t *nn)
 {
     float sum = 0.0f;
@@ -374,7 +330,6 @@ float NN_MovingAvgLoss(const NN_Handle_t *nn)
 
 void NN_PrintWeightStats(const NN_Handle_t *nn)
 {
-    /* Compute W1 statistics (most important weight tensor) */
     float min_w1 = nn->W1[0], max_w1 = nn->W1[0], sum_w1 = 0.0f;
     for (uint32_t i = 0U; i < NN_INPUT_SIZE * NN_HIDDEN_SIZE; i++) {
         float w = nn->W1[i];

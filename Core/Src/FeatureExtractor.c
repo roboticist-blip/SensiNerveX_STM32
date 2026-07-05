@@ -21,8 +21,8 @@
  *    - This is critical: raw IMU values span very different ranges
  *      (pitch: ±180°, accel_mag: ~9.8 m/s²) — normalization equalizes them
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #include "FeatureExtractor.h"
@@ -30,9 +30,6 @@
 #include <string.h>
 #include <math.h>
 
-/* =========================================================================
- * CHANNEL INDICES inside ring buffer slots
- * ========================================================================= */
 #define CH_PITCH        0U
 #define CH_ROLL         1U
 #define CH_GYRO_MAG     2U
@@ -40,20 +37,10 @@
 #define CH_DELTA_GYRO   4U
 #define NUM_CHANNELS    5U
 
-/* =========================================================================
- * INITIALIZATION
- * ========================================================================= */
-
 void FE_Init(FE_State_t *fe)
 {
-    /* Zero the entire ring buffer and state */
     memset(fe, 0, sizeof(FE_State_t));
-    /* window_ready is already 0 after memset */
 }
-
-/* =========================================================================
- * PUSH — O(1) ring buffer insert
- * ========================================================================= */
 
 /**
  * @brief  Insert one CF_Output_t into the ring buffer.
@@ -66,33 +53,25 @@ void FE_Init(FE_State_t *fe)
  */
 void FE_Push(FE_State_t *fe, const CF_Output_t *out)
 {
-    /* Compute write index using power-of-2 mask (no modulo needed) */
     uint32_t idx = fe->ring.head & (IMU_RING_BUFFER_DEPTH - 1U);
 
-    /* Write 5 channels into the slot */
     fe->ring.buf[idx][CH_PITCH]      = out->pitch;
     fe->ring.buf[idx][CH_ROLL]       = out->roll;
     fe->ring.buf[idx][CH_GYRO_MAG]   = out->gyro_mag;
     fe->ring.buf[idx][CH_ACCEL_MAG]  = out->accel_mag;
     fe->ring.buf[idx][CH_DELTA_GYRO] = out->delta_gyro_mag;
 
-    /* Advance head (wraps at 2^32, which is fine) */
     fe->ring.head++;
 
-    /* Track fill count (saturate at ring depth) */
     if (fe->ring.count < IMU_RING_BUFFER_DEPTH) {
         fe->ring.count++;
     }
 
-    /* Mark window ready once we have enough history */
     if (fe->ring.count >= FEATURE_WINDOW_SAMPLES) {
         fe->window_ready = 1U;
     }
 }
 
-/* =========================================================================
- * Z-SCORE NORMALIZATION — single-pass Welford algorithm
- * ========================================================================= */
 
 /**
  * @brief  Normalize a float segment to zero mean and unit variance.
@@ -111,26 +90,23 @@ void FE_ZScoreNormalize(float *v, uint32_t len)
 {
     if (len == 0U) return;
 
-    /* Pass 1: compute mean */
+    // Pass 1: compute mean 
     float sum = 0.0f;
     for (uint32_t i = 0U; i < len; i++) {
         sum += v[i];
     }
     float mean = sum / (float)len;
 
-    /* Pass 2: compute variance (sum of squared deviations) */
+    // Pass 2: compute variance (sum of squared deviations)
     float var_sum = 0.0f;
     for (uint32_t i = 0U; i < len; i++) {
         float diff = v[i] - mean;
         var_sum += diff * diff;
     }
 
-    /* Sample standard deviation */
     float std = sqrtf(var_sum / (float)(len > 1U ? len - 1U : 1U));
 
-    /* Apply normalization or zero out flat signal */
     if (std < ZSCORE_EPSILON) {
-        /* Flat signal: no vibration information in this channel segment */
         memset(v, 0, len * sizeof(float));
         return;
     }
@@ -140,10 +116,6 @@ void FE_ZScoreNormalize(float *v, uint32_t len)
         v[i] = (v[i] - mean) * inv_std;
     }
 }
-
-/* =========================================================================
- * FEATURE VECTOR CONSTRUCTION
- * ========================================================================= */
 
 /**
  * @brief  Extract and normalize 500-float feature vector from ring buffer.
@@ -174,11 +146,8 @@ uint8_t FE_BuildFeatureVector(const FE_State_t *fe,
     const uint32_t mask = IMU_RING_BUFFER_DEPTH - 1U;
     const uint32_t N    = FEATURE_WINDOW_SAMPLES;
 
-    /* Start of the window (oldest sample in the feature window) */
-    /* head points to the next write slot, so most recent is head-1 */
     uint32_t start = (fe->ring.head - N) & mask;
 
-    /* --- Extract each channel into the appropriate feature slice -------- */
     for (uint32_t s = 0U; s < N; s++) {
         uint32_t ring_idx = (start + s) & mask;
 
@@ -189,7 +158,6 @@ uint8_t FE_BuildFeatureVector(const FE_State_t *fe,
         feature[s + 4U * N] = fe->ring.buf[ring_idx][CH_DELTA_GYRO];
     }
 
-    /* --- Apply Z-score normalization per channel ----------------------- */
     for (uint32_t ch = 0U; ch < NUM_CHANNELS; ch++) {
         FE_ZScoreNormalize(&feature[ch * N], N);
     }

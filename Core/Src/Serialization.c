@@ -14,7 +14,7 @@
  *   N = FL_WEIGHT_COUNT = 8067
  *   Total = 5 + 32268 + 2 = 32275 bytes
  *
- * @author  FedVibroSense Project
+ * @author  SensiNerveX Project
  * @version 1.0.0
  */
 
@@ -22,27 +22,19 @@
 #include "Utils.h"
 #include <string.h>
 
-/* =========================================================================
+/* 
  * STATIC PACKET BUFFER
  *
  * Placed in BSS — zero-initialized by startup code.
  * Shared between upload and download (never simultaneous).
- * ========================================================================= */
+ */
 
 uint8_t ser_packet_buf[SER_TOTAL_PACKET_BYTES];
-
-/* =========================================================================
- * CRC WRAPPER
- * ========================================================================= */
 
 uint16_t SER_ComputeCRC(const uint8_t *buf, uint32_t len)
 {
     return Utils_CRC16(buf, len);
 }
-
-/* =========================================================================
- * SERIALIZE WEIGHTS → BINARY PACKET
- * ========================================================================= */
 
 /**
  * @brief  Pack neural network weights into the FL binary packet format.
@@ -74,7 +66,6 @@ SER_Status_t SER_SerializeWeights(const NN_Handle_t *nn,
 
     uint32_t offset = 0U;
 
-    /* --- Header --------------------------------------------------------- */
     SER_WriteU16(out_buf, offset, magic);
     offset += 2U;
 
@@ -83,33 +74,26 @@ SER_Status_t SER_SerializeWeights(const NN_Handle_t *nn,
     SER_WriteU16(out_buf, offset, (uint16_t)FL_WEIGHT_COUNT);
     offset += 2U;
 
-    /* --- Payload: W1 (8000 floats) -------------------------------------- */
     for (uint32_t i = 0U; i < NN_INPUT_SIZE * NN_HIDDEN_SIZE; i++) {
         SER_WriteFloat(out_buf, offset, nn->W1[i]);
         offset += 4U;
     }
 
-    /* --- Payload: b1 (16 floats) ---------------------------------------- */
     for (uint32_t i = 0U; i < NN_HIDDEN_SIZE; i++) {
         SER_WriteFloat(out_buf, offset, nn->b1[i]);
         offset += 4U;
     }
 
-    /* --- Payload: W2 (48 floats) ---------------------------------------- */
     for (uint32_t i = 0U; i < NN_HIDDEN_SIZE * NN_OUTPUT_SIZE; i++) {
         SER_WriteFloat(out_buf, offset, nn->W2[i]);
         offset += 4U;
     }
 
-    /* --- Payload: b2 (3 floats) ----------------------------------------- */
     for (uint32_t i = 0U; i < NN_OUTPUT_SIZE; i++) {
         SER_WriteFloat(out_buf, offset, nn->b2[i]);
         offset += 4U;
     }
 
-    /* offset should now equal SER_HEADER_SIZE + SER_PAYLOAD_BYTES */
-
-    /* --- CRC-16 over header + payload ----------------------------------- */
     uint16_t crc = SER_ComputeCRC(out_buf, offset);
     SER_WriteU16(out_buf, offset, crc);
     offset += 2U;
@@ -119,10 +103,6 @@ SER_Status_t SER_SerializeWeights(const NN_Handle_t *nn,
 
     return SER_OK;
 }
-
-/* =========================================================================
- * DESERIALIZE BINARY PACKET → NN WEIGHTS
- * ========================================================================= */
 
 /**
  * @brief  Validate and unpack a received FL packet into the neural network.
@@ -147,7 +127,6 @@ SER_Status_t SER_DeserializeWeights(NN_Handle_t *nn,
 
     uint32_t offset = 0U;
 
-    /* --- Check magic ---------------------------------------------------- */
     uint16_t rx_magic = SER_ReadU16(in_buf, offset);
     offset += 2U;
     if (rx_magic != FL_PACKET_MAGIC_DOWNLOAD) {
@@ -156,14 +135,12 @@ SER_Status_t SER_DeserializeWeights(NN_Handle_t *nn,
         return SER_ERR_MAGIC;
     }
 
-    /* --- Check version -------------------------------------------------- */
     uint8_t rx_ver = in_buf[offset++];
     if (rx_ver != SER_PROTOCOL_VERSION) {
         LOG_ERR("SER: unsupported version 0x%02X", rx_ver);
         return SER_ERR_VERSION;
     }
 
-    /* --- Check weight count --------------------------------------------- */
     uint16_t rx_nweights = SER_ReadU16(in_buf, offset);
     offset += 2U;
     if (rx_nweights != (uint16_t)FL_WEIGHT_COUNT) {
@@ -172,7 +149,6 @@ SER_Status_t SER_DeserializeWeights(NN_Handle_t *nn,
         return SER_ERR_LENGTH;
     }
 
-    /* --- CRC validation ------------------------------------------------- */
     uint32_t payload_end = SER_HEADER_SIZE + SER_PAYLOAD_BYTES;
     uint16_t rx_crc      = SER_ReadU16(in_buf, payload_end);
     uint16_t calc_crc    = SER_ComputeCRC(in_buf, payload_end);
@@ -181,9 +157,6 @@ SER_Status_t SER_DeserializeWeights(NN_Handle_t *nn,
         LOG_ERR("SER: CRC mismatch (rx=0x%04X, calc=0x%04X)", rx_crc, calc_crc);
         return SER_ERR_CRC;
     }
-
-    /* --- All checks passed: unpack weights ------------------------------- */
-    /* offset is now at start of payload (= SER_HEADER_SIZE = 5) */
 
     for (uint32_t i = 0U; i < NN_INPUT_SIZE * NN_HIDDEN_SIZE; i++) {
         nn->W1[i] = SER_ReadFloat(in_buf, offset);

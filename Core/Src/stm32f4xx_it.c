@@ -17,7 +17,6 @@
   */
 /* USER CODE END Header */
 
-/* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
@@ -98,7 +97,7 @@ void HardFault_Handler(void)
   }
 }
 
-/**
+/*
   * @brief This function handles Memory management fault.
   */
 void MemManage_Handler(void)
@@ -118,9 +117,7 @@ void MemManage_Handler(void)
   */
 void BusFault_Handler(void)
 {
-  /* USER CODE BEGIN BusFault_IRQn 0 */
 
-  /* USER CODE END BusFault_IRQn 0 */
   while (1)
   {
     /* USER CODE BEGIN W1_BusFault_IRQn 0 */

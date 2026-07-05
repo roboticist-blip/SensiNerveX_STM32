@@ -1,4 +1,0 @@
-Core/Src/AppModule.c:12:9:AppModule_Register	16	static
-Core/Src/AppModule.c:26:6:AppModule_InitAll	16	static
-Core/Src/AppModule.c:35:6:AppModule_TickAll	16	static
-Core/Src/AppModule.c:44:9:AppModule_Count	0	static

@@ -22,8 +22,8 @@
  *   Ring buffer:  128 × 5 × 4 = 2560 bytes (static)
  *   Feature vec:  500 × 4     = 2000 bytes (static, caller-provided)
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * @author  SensiNerveX Project
+ * @version 2.0.0
  */
 
 #ifndef FEATUREEXTRACTOR_H
@@ -32,10 +32,6 @@
 #include <stdint.h>
 #include "Config.h"
 #include "ComplementaryFilter.h"
-
-/* =========================================================================
- * RING BUFFER STRUCTURE
- * ========================================================================= */
 
 /**
  * @brief  Ring buffer storing the last IMU_RING_BUFFER_DEPTH filter outputs.
@@ -50,26 +46,18 @@
  * Addressing uses power-of-2 mask (depth - 1) to avoid modulo overhead.
  */
 typedef struct {
-    float    buf[IMU_RING_BUFFER_DEPTH][5];  /**< Circular storage (static) */
-    uint32_t head;                           /**< Next-write index (unmasked) */
-    uint32_t count;                          /**< Samples written (saturates at depth) */
+    float    buf[IMU_RING_BUFFER_DEPTH][5];  
+    uint32_t head;                           
+    uint32_t count;                         
 } FE_RingBuffer_t;
-
-/* =========================================================================
- * FEATURE EXTRACTOR STATE
- * ========================================================================= */
 
 /**
  * @brief  Feature extractor state — owns ring buffer and window statistics.
  */
 typedef struct {
-    FE_RingBuffer_t ring;             /**< Circular IMU data store */
-    uint8_t         window_ready;     /**< 1 when >= FEATURE_WINDOW_SAMPLES present */
+    FE_RingBuffer_t ring;             // Circular IMU data store
+    uint8_t         window_ready;     //1 when >= FEATURE_WINDOW_SAMPLES present
 } FE_State_t;
-
-/* =========================================================================
- * PUBLIC API
- * ========================================================================= */
 
 /**
  * @brief  Initialize the feature extractor state.
@@ -81,10 +69,6 @@ void FE_Init(FE_State_t *fe);
 /**
  * @brief  Push one complementary filter output into the ring buffer.
  *
- * Writes the 5-channel sample at the current head position and advances head.
- * Updates window_ready flag once FEATURE_WINDOW_SAMPLES samples are present.
- *
- * Execution: O(1), no dynamic allocation.
  *
  * @param  fe   Feature extractor state
  * @param  out  CF_Output_t from the current filter step

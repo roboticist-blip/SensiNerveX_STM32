@@ -283,7 +283,7 @@ void SystemInit_ExtMemCtl(void)
   register uint32_t tmpreg = 0, timeout = 0xFFFF;
   register __IO uint32_t index;
 
-  /* Enable GPIOC, GPIOD, GPIOE, GPIOF, GPIOG, GPIOH and GPIOI interface clock */
+  // Enable GPIOC, GPIOD, GPIOE, GPIOF, GPIOG, GPIOH and GPIOI interface clock 
   RCC->AHB1ENR |= 0x000001F8;
 
   /* Delay after an RCC peripheral clock enabling */
