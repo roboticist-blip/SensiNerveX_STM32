@@ -351,11 +351,23 @@ static void Mod_FeatureWindow_Tick(void)
     /* Update LEDs with predicted class */
     App_UpdateLEDs(pred, 0U);
 
-    /* Persist this window to SD — non-blocking, see DataLogger.h */
+    /* Persist the compact operational summary to the LOG file —
+     * non-blocking, queued, see DataLogger.h */
     DataLogger_LogWindow(s_window_count, now_ms,
                           s_cf_out.pitch, s_cf_out.roll, pred,
                           s_nn.a2[CLASS_NORMAL], s_nn.a2[CLASS_IMBALANCE],
                           s_nn.a2[CLASS_LOOSENESS], s_current_label);
+
+    /* Persist the full raw feature vector + ground-truth label to the
+     * DATA file for external retraining / publication reproducibility.
+     * BLOCKING (once per window, i.e. 1 Hz here) — see the design note
+     * above DataLogger_LogRawWindow() in DataLogger.c for why this one
+     * isn't queued the way LogWindow() above is. */
+    DataLogger_LogRawWindow(s_window_count, now_ms,
+                             s_current_label, pred,
+                             s_nn.a2[CLASS_NORMAL], s_nn.a2[CLASS_IMBALANCE],
+                             s_nn.a2[CLASS_LOOSENESS],
+                             s_feature_vec, FEATURE_VECTOR_SIZE);
 
     /* Submit to FL client if in labeled mode -------------------- */
     if (s_flc.state == FLC_STATE_IDLE ||
@@ -508,10 +520,10 @@ static void App_HandleUARTCommand(uint8_t cmd)
         case 'l': {
             DataLogger_Stats_t st;
             DataLogger_GetStats(&st);
-            LOG_INF("SD Log: mounted=%u written=%lu dropped=%lu "
-                    "write_err=%lu remounts=%lu",
-                    st.mounted, st.rows_written, st.rows_dropped,
-                    st.write_errors, st.remount_count);
+            LOG_INF("SD LOG:  mounted=%u written=%lu dropped=%lu write_err=%lu",
+                    st.log_mounted, st.log_rows_written, st.log_rows_dropped, st.log_write_errors);
+            LOG_INF("SD DATA: mounted=%u written=%lu write_err=%lu remounts=%lu",
+                    st.data_mounted, st.data_rows_written, st.data_write_errors, st.remount_count);
             break;
         }
         case 'f':
