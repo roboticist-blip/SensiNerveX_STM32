@@ -1,7 +1,7 @@
-Core/Src/DataLogger.c:201:13:DataLogger_ModuleInit	112	static
-Core/Src/DataLogger.c:126:16:DataLogger_Enqueue	24	static
-Core/Src/DataLogger.c:221:13:DataLogger_ModuleTick	24	static
-Core/Src/DataLogger.c:149:21:DataLogger_LogWindow	264	static
-Core/Src/DataLogger.c:167:21:DataLogger_LogFLRound	200	static
-Core/Src/DataLogger.c:182:6:DataLogger_Flush	8	static
-Core/Src/DataLogger.c:190:6:DataLogger_GetStats	12	static
+Core/Src/DataLogger.c:231:13:DataLogger_ModuleInit	112	static
+Core/Src/DataLogger.c:156:16:DataLogger_Enqueue	24	static
+Core/Src/DataLogger.c:251:13:DataLogger_ModuleTick	24	static
+Core/Src/DataLogger.c:179:21:DataLogger_LogWindow	264	static
+Core/Src/DataLogger.c:197:21:DataLogger_LogFLRound	200	static
+Core/Src/DataLogger.c:212:6:DataLogger_Flush	8	static
+Core/Src/DataLogger.c:220:6:DataLogger_GetStats	12	static

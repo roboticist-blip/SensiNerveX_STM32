@@ -60,11 +60,40 @@ static uint8_t DataLogger_Mount(void)
     FRESULT fr = f_mount(&s_fatfs, "", 1);   /* 1 = mount now, not lazily */
 
     if (fr == FR_NO_FILESYSTEM) {
-        /* The vendored FatFs config in this repo disables _USE_MKFS, so
-         * auto-formatting is not available here. Treat this as a mount
-         * failure and let the user format the card externally. */
-        LOG_ERR("DataLogger: no FAT filesystem found on card — card needs formatting");
-        return 0U;
+        /* Card is physically fine (SDCard_PrintInfo already succeeded by
+         * this point) but has no FAT boot sector FatFs recognizes — either
+         * genuinely blank, or formatted as something this FatFs release
+         * can't parse. _USE_MKFS is now enabled in the vendored
+         * Middlewares/Third_Party/FatFs/src/ffconf.h for exactly this case
+         * (that file — NOT Core/Inc/ffconf.h — is the one that actually
+         * governs ff.c: ff.h's #include "ffconf.h" resolves same-directory
+         * first, so the vendored copy always wins. Core/Inc/ffconf.h is
+         * unused dead weight at this point; edit the vendored one instead
+         * if you need to change any FatFs setting).
+         *
+         * NOTE: this vendored FatFs release predates the MKFS_PARM-struct
+         * f_mkfs() API — it uses the older 5-argument signature
+         * (path, opt, au, work, len), not (path, const MKFS_PARM*, work,
+         * len). Using the wrong signature here would fail to compile
+         * against this specific ff.h.
+         */
+        LOG_ERR("DataLogger: no FAT filesystem found on card — formatting");
+
+        /* Work buffer must be >= the FatFs sector size — this vendored
+         * config's _MAX_SS is 512 (see ffconf.h); hardcoded here rather
+         * than via a macro since the macro name itself differs between
+         * FatFs API generations (_MAX_SS here vs FF_MAX_SS elsewhere). */
+        static uint8_t s_mkfs_work[512];
+
+        FRESULT mkfs_fr = f_mkfs("", FM_FAT | FM_SFD, 0, s_mkfs_work, sizeof(s_mkfs_work));
+        if (mkfs_fr != FR_OK) {
+            LOG_ERR("DataLogger: f_mkfs failed (FRESULT=%d) — card may be faulty/write-protected",
+                     (int)mkfs_fr);
+            return 0U;
+        }
+
+        LOG_INF("DataLogger: format complete, remounting");
+        fr = f_mount(&s_fatfs, "", 1);
     }
 
     if (fr != FR_OK) {
@@ -95,7 +124,8 @@ static uint8_t DataLogger_OpenSessionFile(void)
 
     for (uint32_t idx = 1U; idx <= 99999U; idx++) {
         snprintf(path, sizeof(path), "%s/%s_%05lu.CSV", SD_LOG_DIR, SD_LOG_FILE_PREFIX, idx);
-        if (f_stat(path, &fno) == FR_NO_FILE) {
+        FRESULT fr = f_stat(path, &fno);
+        if (fr == FR_NO_FILE) {
             FRESULT fr = f_open(&s_file, path, FA_WRITE | FA_CREATE_NEW);
             if (fr != FR_OK) {
                 LOG_ERR("DataLogger: f_open(%s) failed (FRESULT=%d)", path, (int)fr);
