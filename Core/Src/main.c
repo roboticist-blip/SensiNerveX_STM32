@@ -5,28 +5,37 @@
  * Application entry point and main control loop.
  *
  * Hardware:
- *   MCU:    STM32F405RGT6 @ 168 MHz, Cortex-M4F
+ *   MCU:    STM32F405RGT6 @ 168 MHz, Cortex-M4F (WeAct Studio core board)
  *   Sensor: MPU-6050 on I2C1 (PB8=SCL, PB9=SDA)
  *   Debug:  UART2 (PA2=TX, PA3=RX) @ 115200 baud
  *   FL:     UART1 (PA9=TX, PA10=RX) @ 921600 baud
+ *   SD:     SDIO 4-bit (PC8-11=D0-D3, PC12=CK, PD2=CMD) — see SDCard.h
  *   Label:  PC13 button (active low) cycles class: normal→imbalance→looseness
  *   Status: PA4/5/6 LEDs = class indicator, PA7 = training indicator
  *
- * Main loop execution (100 Hz):
+ * Main loop architecture:
  *
- *  Every 10 ms (100 Hz interrupt via TIM3):
- *    1. Read MPU-6050 (burst I2C)
- *    2. Update complementary filter → CF_Output_t
- *    3. Push to feature ring buffer
+ *   main() no longer hand-sequences each subsystem. It builds a table of
+ *   AppModule_t entries in App_Init() (see AppModule.h) and the loop body
+ *   is a single AppModule_TickAll() call. Registration order fixes the
+ *   tick order, which mirrors the original hand-written sequence:
  *
- *  Every 1 s (when ring buffer has FEATURE_WINDOW_SAMPLES):
- *    4. Build 500-float feature vector (with Z-score normalization)
- *    5. Run NN inference → predicted class
- *    6. If labeled mode: submit (feature, label) to FL client
- *    7. Run FLC_Tick() to advance FL FSM
+ *     [100 Hz]  IMUSample     — MPU-6050 read → complementary filter → ring push
+ *     [1 Hz]    FeatureWindow — feature vector build → NN inference →
+ *                               SD log enqueue → FL sample submit
+ *               FLClient      — FL FSM tick (no-op outside TRAINING/
+ *                               UPLOADING/DOWNLOADING/ERROR) → SD round log
+ *               DataLogger    — drains at most one queued SD row per tick
+ *     [async]   UARTCommand   — label/FL/log commands from the debug UART
+ *
+ *   Adding a new subsystem (another sensor, a second storage backend, a
+ *   wireless transport, ...) means writing one Init/Tick pair and one
+ *   AppModule_Register() call in App_Init() — this loop body is done
+ *   growing. See Config.h "SCALABILITY / MODULE FRAMEWORK".
  *
  *  UART label injection:
- *    Receive single byte: '0'=normal, '1'=imbalance, '2'=looseness, 'u'=upload
+ *    Receive single byte: '0'=normal, '1'=imbalance, '2'=looseness, 'u'=upload,
+ *    'l'=SD log stats, 'f'=force SD flush.
  *
  * =========================================================================
  * CUBEMX-GENERATED FILES (DO NOT EDIT MANUALLY):
@@ -48,10 +57,17 @@
  *   Core/Src/Serialization.c
  *   Core/Src/FederatedClient.c
  *   Core/Src/Utils.c
+ *   Core/Src/AppModule.c            — module table (NEW)
+ *   Core/Src/SDCard.c               — SDIO block driver (NEW)
+ *   Core/Src/diskio.c               — FatFs disk I/O glue (NEW)
+ *   Core/Src/DataLogger.c           — SD/FatFs logging service (NEW)
  *   Core/Inc/  (all headers above)
  *
- * @author  FedVibroSense Project
- * @version 1.0.0
+ * THIRD-PARTY (add separately — see Core/Inc/ffconf.h header comment):
+ *   ff.c / ff.h / ffunicode.c       — FatFs core engine
+ *
+ * @author  FedVibroSense / SensiNerveX Project
+ * @version 1.1.0
  */
 
 //#include "main.h"
@@ -66,6 +82,8 @@
 #include "NeuralNetwork.h"
 #include "FederatedClient.h"
 #include "Serialization.h"
+#include "AppModule.h"
+#include "DataLogger.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -122,6 +140,14 @@ volatile uint8_t g_uart_rx_ready = 0U;
 
 static uint8_t s_current_label = CLASS_NORMAL;
 
+/*
+ * Shared main-loop state, now file-scope so the AppModule tick wrappers
+ * below can each own their slice of it without threading extra
+ * parameters through AppModule_TickFn's no-argument signature.
+ */
+static uint32_t s_window_count      = 0UL; /* Number of complete 1-s windows */
+static uint32_t s_last_window_ms    = 0UL; /* Timestamp of last feature build */
+
 static void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
@@ -133,6 +159,31 @@ static void MX_TIM3_Init(void);
 static void App_Init(void);
 static void App_HandleUARTCommand(uint8_t cmd);
 static void App_UpdateLEDs(uint8_t class_idx, uint8_t training);
+
+/*
+ * =========================================================================
+ * SCALABILITY REFACTOR — AppModule_t WRAPPERS
+ *
+ * Each existing subsystem gets a thin, no-argument Tick() wrapper here so
+ * it can be driven from the AppModule table (AppModule.h) instead of a
+ * hand-written sequence in main(). Registration order (set in App_Init)
+ * preserves the original loop ordering: IMU sampling first (timing
+ * critical), then the 1 Hz feature/inference/FL-submit step, then the FL
+ * FSM tick, then SD logging drain, then UART command handling last.
+ *
+ * Adding a new subsystem later means writing one such wrapper and one
+ * AppModule_Register() call — main()'s loop body never changes again.
+ * =========================================================================
+ */
+static void Mod_ImuSample_Tick(void);
+static void Mod_FeatureWindow_Tick(void);
+static void Mod_FLC_Tick(void);
+static void Mod_UartCommand_Tick(void);
+
+static const AppModule_t s_mod_imu     = { .name = "IMUSample",     .init = NULL, .tick = Mod_ImuSample_Tick };
+static const AppModule_t s_mod_feature = { .name = "FeatureWindow", .init = NULL, .tick = Mod_FeatureWindow_Tick };
+static const AppModule_t s_mod_flc     = { .name = "FLClient",      .init = NULL, .tick = Mod_FLC_Tick };
+static const AppModule_t s_mod_uart    = { .name = "UARTCommand",   .init = NULL, .tick = Mod_UartCommand_Tick };
 
 
 int main(void)
@@ -195,119 +246,167 @@ int main(void)
     Utils_PrintMemoryStats();
 
     /*
-     * MAIN LOOP
+     * MAIN LOOP — now driven entirely by the AppModule table built in
+     * App_Init(). Each iteration is one AppModule_TickAll() call, which
+     * runs every registered module's Tick() in registration order:
      *
-     * Structure:
-     *   [100 Hz]  IMU read → CF update → ring push → (optional) inference
-     *   [1 Hz]    Feature vector build → FL client tick
-     *   [async]   UART command handling for labels and FL trigger
-    */
-
-    uint32_t window_count       = 0UL;  /* Number of complete 1-s windows */
-    uint32_t last_window_ms     = 0UL;  /* Timestamp of last feature build */
-    uint8_t  inference_pending  = 0U;   /* Flag: new feature vector ready */
+     *   [100 Hz]  IMUSample     — IMU read → CF update → ring push
+     *   [1 Hz]    FeatureWindow — feature vector build → inference → FL submit
+     *             FLClient      — FL FSM tick (only does work in non-idle states)
+     *             DataLogger    — drains at most one queued SD row per call
+     *   [async]   UARTCommand   — label/FL/log commands from the debug UART
+     *
+     * See AppModule.h for why this replaced the previous hand-written
+     * sequence, and Config.h "SCALABILITY / MODULE FRAMEWORK" for how to
+     * add a new subsystem without touching this loop again.
+     */
+    LOG_INF("App: %u modules registered, entering main loop", AppModule_Count());
 
     while (1) {
-
-        /* --- 100 Hz: IMU sampling (flag set by TIM3 ISR) --------------- */
-        if (g_sample_flag) {
-            g_sample_flag = 0U;
-
-            uint32_t t_start = Utils_GetMicros();
-
-            /* Read IMU — if I2C fails, skip this sample */
-            MPU6050_Status_t imu_ret = MPU6050_ReadScaled(&s_mpu, &s_imu_data);
-            if (imu_ret != MPU6050_OK) {
-                LOG_ERR("IMU read fail at sample_cnt=%lu", window_count);
-                continue;
-            }
-
-            /* Update complementary filter */
-            CF_Update(&s_cf_state, &s_imu_data, &s_cf_out);
-
-            /* Push filter output to ring buffer */
-            FE_Push(&s_fe, &s_cf_out);
-
-            uint32_t t_imu_us = Utils_ElapsedMicros(t_start);
-            LOG_VRB("IMU+CF+Push: %lu µs | pitch=%.2f roll=%.2f",
-                    t_imu_us,
-                    (double)s_cf_out.pitch,
-                    (double)s_cf_out.roll);
-        }
-
-        /* --- Feature vector build (once per second) -------------------- */
-        uint32_t now_ms = Utils_GetMillis();
-        if (FE_IsWindowReady(&s_fe) &&
-            (now_ms - last_window_ms >= FEATURE_WINDOW_SECONDS * 1000U)) {
-
-            last_window_ms = now_ms;
-            uint32_t t_feat = Utils_GetMicros();
-
-            /* Build 500-float normalized feature vector */
-            uint8_t ok = FE_BuildFeatureVector(&s_fe, s_feature_vec);
-            if (!ok) {
-                LOG_ERR("Feature build failed");
-                continue;
-            }
-            uint32_t t_feat_us = Utils_ElapsedMicros(t_feat);
-
-            /* Run inference on the new feature vector */
-            uint32_t t_infer = Utils_GetMicros();
-            NN_Forward(&s_nn, s_feature_vec);
-            uint8_t pred = NN_Predict(&s_nn);
-            uint32_t t_infer_us = Utils_ElapsedMicros(t_infer);
-
-            window_count++;
-            inference_pending = 1U;
-
-            LOG_INF("Window #%lu | Pred=%u [N=%.3f I=%.3f L=%.3f] | "
-                    "feat=%lu µs infer=%lu µs",
-                    window_count, pred,
-                    (double)s_nn.a2[CLASS_NORMAL],
-                    (double)s_nn.a2[CLASS_IMBALANCE],
-                    (double)s_nn.a2[CLASS_LOOSENESS],
-                    t_feat_us, t_infer_us);
-
-            /* Update LEDs with predicted class */
-            App_UpdateLEDs(pred, 0U);
-
-            /* Submit to FL client if in labeled mode -------------------- */
-            if (s_flc.state == FLC_STATE_IDLE ||
-                s_flc.state == FLC_STATE_COLLECTING) {
-
-                uint8_t submitted = FLC_SubmitSample(
-                    &s_flc, s_feature_vec, s_current_label);
-
-                if (submitted) {
-                    LOG_INF("FL: submitted window #%lu with label=%u "
-                            "(%u/%u buffered)",
-                            window_count, s_current_label,
-                            s_flc.train_buf.count, FL_LOCAL_EPOCHS);
-                }
-            }
-        }
-
-        /* --- Federated Learning FSM tick ------------------------------- */
-        if (s_flc.state == FLC_STATE_TRAINING ||
-            s_flc.state == FLC_STATE_UPLOADING ||
-            s_flc.state == FLC_STATE_DOWNLOADING ||
-            s_flc.state == FLC_STATE_ERROR) {
-
-            App_UpdateLEDs(s_current_label, 1U);   /* Training LED on */
-            FLC_Tick(&s_flc);
-            App_UpdateLEDs(s_current_label, 0U);
-        }
-
-        /* --- UART command handling -------------------------------------- */
-        if (g_uart_rx_ready) {
-            g_uart_rx_ready = 0U;
-            App_HandleUARTCommand(g_uart_rx_byte);
-            /* Re-arm UART interrupt for next byte */
-            HAL_UART_Receive_IT(&huart2, &g_uart_rx_byte, 1U);
-        }
+        AppModule_TickAll();
     }
     /* unreachable */
     return 0;
+}
+
+/*
+ * =========================================================================
+ * APPMODULE TICK IMPLEMENTATIONS
+ *
+ * Bodies are unchanged from the original inline main-loop code — only the
+ * packaging changed (each became a standalone no-argument function so it
+ * can sit in the AppModule table). See the wrapper declarations above
+ * main() for the registration-order rationale.
+ * =========================================================================
+ */
+
+/** [100 Hz] IMU read → CF update → ring push. Timing-critical: registered
+ *  first so it always runs before the once-per-second work below it. */
+static void Mod_ImuSample_Tick(void)
+{
+    if (!g_sample_flag) {
+        return;
+    }
+    g_sample_flag = 0U;
+
+    uint32_t t_start = Utils_GetMicros();
+
+    /* Read IMU — if I2C fails, skip this sample */
+    MPU6050_Status_t imu_ret = MPU6050_ReadScaled(&s_mpu, &s_imu_data);
+    if (imu_ret != MPU6050_OK) {
+        LOG_ERR("IMU read fail at window_cnt=%lu", s_window_count);
+        return;
+    }
+
+    /* Update complementary filter */
+    CF_Update(&s_cf_state, &s_imu_data, &s_cf_out);
+
+    /* Push filter output to ring buffer */
+    FE_Push(&s_fe, &s_cf_out);
+
+    uint32_t t_imu_us = Utils_ElapsedMicros(t_start);
+    LOG_VRB("IMU+CF+Push: %lu µs | pitch=%.2f roll=%.2f",
+            t_imu_us,
+            (double)s_cf_out.pitch,
+            (double)s_cf_out.roll);
+}
+
+/** [1 Hz] Feature vector build → inference → LED update → FL submit
+ *  → SD log enqueue. */
+static void Mod_FeatureWindow_Tick(void)
+{
+    uint32_t now_ms = Utils_GetMillis();
+    if (!(FE_IsWindowReady(&s_fe) &&
+          (now_ms - s_last_window_ms >= FEATURE_WINDOW_SECONDS * 1000U))) {
+        return;
+    }
+
+    s_last_window_ms = now_ms;
+    uint32_t t_feat = Utils_GetMicros();
+
+    /* Build 500-float normalized feature vector */
+    uint8_t ok = FE_BuildFeatureVector(&s_fe, s_feature_vec);
+    if (!ok) {
+        LOG_ERR("Feature build failed");
+        return;
+    }
+    uint32_t t_feat_us = Utils_ElapsedMicros(t_feat);
+
+    /* Run inference on the new feature vector */
+    uint32_t t_infer = Utils_GetMicros();
+    NN_Forward(&s_nn, s_feature_vec);
+    uint8_t pred = NN_Predict(&s_nn);
+    uint32_t t_infer_us = Utils_ElapsedMicros(t_infer);
+
+    s_window_count++;
+
+    LOG_INF("Window #%lu | Pred=%u [N=%.3f I=%.3f L=%.3f] | "
+            "feat=%lu µs infer=%lu µs",
+            s_window_count, pred,
+            (double)s_nn.a2[CLASS_NORMAL],
+            (double)s_nn.a2[CLASS_IMBALANCE],
+            (double)s_nn.a2[CLASS_LOOSENESS],
+            t_feat_us, t_infer_us);
+
+    /* Update LEDs with predicted class */
+    App_UpdateLEDs(pred, 0U);
+
+    /* Persist this window to SD — non-blocking, see DataLogger.h */
+    DataLogger_LogWindow(s_window_count, now_ms,
+                          s_cf_out.pitch, s_cf_out.roll, pred,
+                          s_nn.a2[CLASS_NORMAL], s_nn.a2[CLASS_IMBALANCE],
+                          s_nn.a2[CLASS_LOOSENESS], s_current_label);
+
+    /* Submit to FL client if in labeled mode -------------------- */
+    if (s_flc.state == FLC_STATE_IDLE ||
+        s_flc.state == FLC_STATE_COLLECTING) {
+
+        uint8_t submitted = FLC_SubmitSample(
+            &s_flc, s_feature_vec, s_current_label);
+
+        if (submitted) {
+            LOG_INF("FL: submitted window #%lu with label=%u "
+                    "(%u/%u buffered)",
+                    s_window_count, s_current_label,
+                    s_flc.train_buf.count, FL_LOCAL_EPOCHS);
+        }
+    }
+}
+
+/** Federated Learning FSM tick. Only does real work outside IDLE/COLLECTING;
+ *  logs a round summary to SD whenever round_count advances. */
+static void Mod_FLC_Tick(void)
+{
+    if (!(s_flc.state == FLC_STATE_TRAINING ||
+          s_flc.state == FLC_STATE_UPLOADING ||
+          s_flc.state == FLC_STATE_DOWNLOADING ||
+          s_flc.state == FLC_STATE_ERROR)) {
+        return;
+    }
+
+    uint32_t round_before = s_flc.round_count;
+
+    App_UpdateLEDs(s_current_label, 1U);   /* Training LED on */
+    FLC_Tick(&s_flc);
+    App_UpdateLEDs(s_current_label, 0U);
+
+    if (s_flc.round_count != round_before) {
+        DataLogger_LogFLRound(s_flc.round_count, Utils_GetMillis(),
+                               s_flc.last_round_loss, s_flc.total_samples,
+                               s_flc.server_connected);
+    }
+}
+
+/** UART single-byte command dispatch (labels, FL trigger, status, logging). */
+static void Mod_UartCommand_Tick(void)
+{
+    if (!g_uart_rx_ready) {
+        return;
+    }
+    g_uart_rx_ready = 0U;
+    App_HandleUARTCommand(g_uart_rx_byte);
+    /* Re-arm UART interrupt for next byte */
+    HAL_UART_Receive_IT(&huart2, &g_uart_rx_byte, 1U);
 }
 
 static void App_Init(void)
@@ -346,6 +445,21 @@ static void App_Init(void)
 
     /* Skip blocking gyro calibration for now so the main loop can run */
     LOG_INF("MPU6050 calibration skipped (temporary)");
+
+    /*
+     * Build the AppModule table (see AppModule.h). Order matters — it is
+     * the tick order — and mirrors the original hand-written sequence:
+     * IMU sampling first, then the 1 Hz feature/FL step, then the FL FSM,
+     * then SD log draining, then the lowest-priority UART command check.
+     */
+    AppModule_Register(&s_mod_imu);
+    AppModule_Register(&s_mod_feature);
+    AppModule_Register(&s_mod_flc);
+    AppModule_Register(&g_datalogger_module);   /* mounts SD + opens session file */
+    AppModule_Register(&s_mod_uart);
+
+    AppModule_InitAll();   /* currently only DataLogger has an Init() */
+
     LOG_INF("App_Init complete. Waiting for IMU data...");
 }
 
@@ -360,6 +474,8 @@ static void App_Init(void)
  *   'r' — reset FL client
  *   's' — print status
  *   'w' — print NN weight statistics
+ *   'l' — print SD data-logger statistics (rows written/dropped, errors)
+ *   'f' — force an immediate SD flush (f_sync) of the open log file
  */
 
 static void App_HandleUARTCommand(uint8_t cmd)
@@ -388,6 +504,19 @@ static void App_HandleUARTCommand(uint8_t cmd)
             break;
         case 'w':
             NN_PrintWeightStats(&s_nn);
+            break;
+        case 'l': {
+            DataLogger_Stats_t st;
+            DataLogger_GetStats(&st);
+            LOG_INF("SD Log: mounted=%u written=%lu dropped=%lu "
+                    "write_err=%lu remounts=%lu",
+                    st.mounted, st.rows_written, st.rows_dropped,
+                    st.write_errors, st.remount_count);
+            break;
+        }
+        case 'f':
+            DataLogger_Flush();
+            LOG_INF("SD Log: forced flush complete");
             break;
         default:
             LOG_VRB("Unknown cmd: 0x%02X", cmd);

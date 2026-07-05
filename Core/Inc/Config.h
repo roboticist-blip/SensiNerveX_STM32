@@ -93,6 +93,56 @@
 #define MPU6050_DLPF_CFG           3U
 
 /* =========================================================================
+ * SD CARD (SDIO) / FATFS DATA LOGGING
+ *
+ * Board: WeAct Studio STM32F405RGT6. SDIO pins are fixed by silicon:
+ *   D0..D3 = PC8..PC11, CK = PC12, CMD = PD2 (see SDCard.h for full map).
+ * ========================================================================= */
+
+/** Master switch — set to 0 to compile the entire logging path out
+ *  (SDCard.c/diskio.c/DataLogger.c become no-ops via DataLogger's stubs). */
+#define SD_LOGGING_ENABLE          1U
+
+/** Use 4-bit wide SDIO bus (faster) vs 1-bit. Named to avoid colliding
+ *  with the HAL/LL register-value macro of the same suffix. */
+#define SD_USE_4BIT_BUS            1U
+
+/** Optional physical card-detect switch. Most WeAct microSD sockets don't
+ *  expose one — leave at 0 and SDCard_IsPresent() always returns "present". */
+#define SD_DETECT_GPIO_ENABLE      0U
+#define SD_DETECT_GPIO_PORT        GPIOB
+#define SD_DETECT_GPIO_PIN         GPIO_PIN_2
+
+#define SD_INIT_TIMEOUT_MS         2000U
+#define SD_MOUNT_RETRY_COUNT       3U
+
+/** How often DataLogger forces an fflush()+f_sync() while a file is open.
+ *  Balances data-loss risk (on power loss) against SD wear/latency. */
+#define SD_LOG_FLUSH_INTERVAL_MS   5000U
+
+#define SD_LOG_DIR                 "LOGS"
+#define SD_LOG_FILE_PREFIX         "SNX"
+#define SD_LOG_MAX_ROW_LEN         160U
+
+/** Depth of the in-RAM ring buffer that decouples "producers" (the 1 Hz
+ *  window loop, the FL FSM) from the SD write, which can block for several
+ *  milliseconds. This is what keeps SD logging from stealing IMU sample
+ *  timing — see DataLogger.h. */
+#define SD_LOG_QUEUE_DEPTH         16U
+
+/* =========================================================================
+ * SCALABILITY / MODULE FRAMEWORK
+ *
+ * main.c drives a small, fixed-size table of AppModule_t entries instead
+ * of hand-written per-subsystem calls. Adding a new subsystem (another
+ * sensor, a second storage backend, a Wi-Fi/BLE transport, ...) means
+ * writing one Init/Tick pair and adding one line to the table in main.c —
+ * the main loop itself never grows. See AppModule.h.
+ * ========================================================================= */
+
+#define APP_MAX_MODULES            8U
+
+/* =========================================================================
  * MEMORY & BUFFERS
  * ========================================================================= */
 
@@ -122,5 +172,9 @@ _Static_assert(FEATURE_VECTOR_SIZE == 500U, "FEATURE_VECTOR_SIZE must be 500");
 _Static_assert(FL_LOCAL_EPOCHS > 0U, "FL_LOCAL_EPOCHS must be >= 1");
 _Static_assert(IMU_RING_BUFFER_DEPTH >= FEATURE_WINDOW_SAMPLES,
     "Ring buffer must hold at least one full window");
+_Static_assert(SD_LOG_MAX_ROW_LEN >= 96U,
+    "SD_LOG_MAX_ROW_LEN too small for a full CSV row (timestamp+features+probs)");
+_Static_assert(APP_MAX_MODULES >= 6U,
+    "APP_MAX_MODULES must fit IMU, FeatureExtractor, NN, FLC, Logger, plus room to grow");
 
 #endif /* CONFIG_H */
