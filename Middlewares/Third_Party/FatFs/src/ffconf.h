@@ -15,7 +15,7 @@
 
 #define _USE_STRFUNC	2		/* 0:Disable, 1:f_gets only, 2:f_gets and f_puts */
 #define _USE_FIND		0		/* 0:Disable, 1:Enable */
-#define _USE_MKFS		0		/* 0:Disable, 1:Enable */
+#define _USE_MKFS		1		/* 0:Disable, 1:Enable */
 #define _USE_FASTSEEK	0		/* 0:Disable, 1:Enable */
 #define _USE_LABEL		0		/* 0:Disable, 1:Enable */
 #define _USE_FORWARD	0		/* 0:Disable, 1:Enable */

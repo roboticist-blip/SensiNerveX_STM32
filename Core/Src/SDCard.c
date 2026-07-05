@@ -195,4 +195,12 @@ void SDCard_PrintInfo(void)
 
     LOG_INF("SD: type=%s blocks=%lu block_size=%lu capacity=%lu MB",
             type, info.LogBlockNbr, info.LogBlockSize, capacity_mb);
+    LOG_INF("CardType      = %lu", info.CardType);
+LOG_INF("LogBlockNbr   = %lu", info.LogBlockNbr);
+LOG_INF("LogBlockSize  = %lu", info.LogBlockSize);
+
+#ifdef HAL_SD_CARDINFO_HAS_BLOCKNBR
+LOG_INF("BlockNbr      = %lu", info.BlockNbr);
+LOG_INF("BlockSize     = %lu", info.BlockSize);
+#endif
 }

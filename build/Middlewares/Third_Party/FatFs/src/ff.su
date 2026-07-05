@@ -32,6 +32,7 @@ Middlewares/Third_Party/FatFs/src/ff.c:4475:9:f_truncate	16	static
 Middlewares/Third_Party/FatFs/src/ff.c:4525:9:f_unlink	128	static
 Middlewares/Third_Party/FatFs/src/ff.c:4620:9:f_mkdir	88	static
 Middlewares/Third_Party/FatFs/src/ff.c:4717:9:f_rename	152	static
+Middlewares/Third_Party/FatFs/src/ff.c:5301:9:f_mkfs	88	static
 Middlewares/Third_Party/FatFs/src/ff.c:5830:8:f_gets	32	static
 Middlewares/Third_Party/FatFs/src/ff.c:5998:5:f_putc	96	static
 Middlewares/Third_Party/FatFs/src/ff.c:6018:5:f_puts	104	static
