@@ -121,7 +121,19 @@
 #define SD_LOG_FLUSH_INTERVAL_MS   5000U
 
 #define SD_LOG_DIR                 "LOGS"
+
+/** IMPORTANT: the vendored FatFs config (Middlewares/Third_Party/FatFs/
+ *  src/ffconf.h) has _USE_LFN 0 — 8.3 short filenames only, max 8 chars
+ *  before the dot. Session files are named PREFIX + 5-digit index + .CSV
+ *  (see DataLogger.c DataLogger_OpenSessionFile), so
+ *  strlen(SD_LOG_FILE_PREFIX) + 5 MUST be <= 8, or every f_stat() probe
+ *  in the free-slot search returns FR_INVALID_NAME instead of FR_NO_FILE
+ *  and the search silently exhausts all 99999 candidates without ever
+ *  opening a file. "SNX" (3 chars) + 5 digits = 8 — exactly at the limit. */
 #define SD_LOG_FILE_PREFIX         "SNX"
+_Static_assert(sizeof(SD_LOG_FILE_PREFIX) - 1U + 5U <= 8U,
+    "SD_LOG_FILE_PREFIX too long for an 8.3 short filename (prefix + 5 digits must fit in 8 chars)");
+
 #define SD_LOG_MAX_ROW_LEN         160U
 
 /** Depth of the in-RAM ring buffer that decouples "producers" (the 1 Hz

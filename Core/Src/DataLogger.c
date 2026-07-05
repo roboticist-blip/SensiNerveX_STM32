@@ -6,6 +6,7 @@
 
 #include "DataLogger.h"
 #include "Utils.h"
+#include "SDCard.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -85,7 +86,13 @@ static uint8_t DataLogger_Mount(void)
          * FatFs API generations (_MAX_SS here vs FF_MAX_SS elsewhere). */
         static uint8_t s_mkfs_work[512];
 
-        FRESULT mkfs_fr = f_mkfs("", FM_FAT | FM_SFD, 0, s_mkfs_work, sizeof(s_mkfs_work));
+        /* FM_FAT (no FM_SFD): let FatFs write a standard MBR-partitioned
+         * layout rather than a super-floppy boot sector. SFD is a less
+         * exercised code path in this old FatFs release, particularly
+         * near the FAT12 size boundary (this 30 MB card is right at that
+         * boundary) — plain FM_FAT is the far more commonly tested
+         * combination across FatFs releases and card sizes. */
+        FRESULT mkfs_fr = f_mkfs("", FM_FAT, 0, s_mkfs_work, sizeof(s_mkfs_work));
         if (mkfs_fr != FR_OK) {
             LOG_ERR("DataLogger: f_mkfs failed (FRESULT=%d) — card may be faulty/write-protected",
                      (int)mkfs_fr);
@@ -93,6 +100,33 @@ static uint8_t DataLogger_Mount(void)
         }
 
         LOG_INF("DataLogger: format complete, remounting");
+
+        /* --- TEMPORARY DIAGNOSTIC ---
+         * f_mkfs() reporting FR_OK here has not been matching what the
+         * very next f_mount() finds (FR_NO_FILESYSTEM), even after fixing
+         * two plausible causes (SDCard_Init non-idempotency, FM_SFD vs
+         * FM_FAT). Rather than guess a third time, read sector 0 straight
+         * off the card — bypassing FatFs entirely — to see exactly what
+         * did or didn't get written. Remove this block once the mismatch
+         * is understood; it costs one raw block read on the mkfs path
+         * only (not the hot path). */
+        {
+            static uint8_t s_diag_buf[512];
+            if (SDCard_ReadBlocks(s_diag_buf, 0, 1) == SDCARD_OK) {
+                LOG_INF("DIAG sector0[0..7]=%02X %02X %02X %02X %02X %02X %02X %02X",
+                        s_diag_buf[0], s_diag_buf[1], s_diag_buf[2], s_diag_buf[3],
+                        s_diag_buf[4], s_diag_buf[5], s_diag_buf[6], s_diag_buf[7]);
+                LOG_INF("DIAG sector0[54..61] (FAT type str)=%02X %02X %02X %02X %02X %02X %02X %02X",
+                        s_diag_buf[54], s_diag_buf[55], s_diag_buf[56], s_diag_buf[57],
+                        s_diag_buf[58], s_diag_buf[59], s_diag_buf[60], s_diag_buf[61]);
+                LOG_INF("DIAG sector0 sig[510..511]=%02X %02X (expect 55 AA)",
+                        s_diag_buf[510], s_diag_buf[511]);
+            } else {
+                LOG_ERR("DIAG: raw sector0 read failed immediately after mkfs");
+            }
+        }
+        /* --- END TEMPORARY DIAGNOSTIC --- */
+
         fr = f_mount(&s_fatfs, "", 1);
     }
 
@@ -123,7 +157,10 @@ static uint8_t DataLogger_OpenSessionFile(void)
     FILINFO fno;
 
     for (uint32_t idx = 1U; idx <= 99999U; idx++) {
-        snprintf(path, sizeof(path), "%s/%s_%05lu.CSV", SD_LOG_DIR, SD_LOG_FILE_PREFIX, idx);
+        /* NOTE: _USE_LFN is 0 in the vendored FatFs config, so filenames
+         * are limited to 8.3 short names — max 8 chars before the dot.
+         * "PREFIX" + 5 digits must be <= 8 chars (no separator budget). */
+        snprintf(path, sizeof(path), "%s/%s%05lu.CSV", SD_LOG_DIR, SD_LOG_FILE_PREFIX, idx);
         FRESULT fr = f_stat(path, &fno);
         if (fr == FR_NO_FILE) {
             FRESULT fr = f_open(&s_file, path, FA_WRITE | FA_CREATE_NEW);

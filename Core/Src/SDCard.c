@@ -86,6 +86,18 @@ SDCard_Status_t SDCard_Init(void)
         return SDCARD_ERR_NOT_PRESENT;
     }
 
+    /* SDCard_Init() gets called again every time FatFs runs
+     * disk_initialize() — which is every f_mount() AND every f_mkfs()
+     * call, not just once at boot. Format-then-immediately-remount (see
+     * DataLogger_Mount()) can trigger this 2-3 times within a single
+     * mount attempt. Without a clean teardown first, memset()'ing
+     * s_hsd and re-running HAL_SD_Init() on top of a handle that HAL
+     * still considers live is undefined — deinit first so every call
+     * genuinely starts from a clean peripheral/card state. */
+    if (s_initialized) {
+        SDCard_DeInit();
+    }
+
     SDCard_GPIO_Init();
 
     memset(&s_hsd, 0, sizeof(s_hsd));
