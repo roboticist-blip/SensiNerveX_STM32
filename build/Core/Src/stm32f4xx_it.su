@@ -1,0 +1,15 @@
+Core/Src/stm32f4xx_it.c:77:6:HardFault_DumpAndHalt	264	static
+Core/Src/stm32f4xx_it.c:153:6:NMI_Handler	0	static
+Core/Src/stm32f4xx_it.c:168:29:HardFault_Handler	0	static
+Core/Src/stm32f4xx_it.c:189:29:MemManage_Handler	0	static
+Core/Src/stm32f4xx_it.c:206:29:BusFault_Handler	0	static
+Core/Src/stm32f4xx_it.c:223:29:UsageFault_Handler	0	static
+Core/Src/stm32f4xx_it.c:240:6:SVC_Handler	0	static
+Core/Src/stm32f4xx_it.c:253:6:DebugMon_Handler	0	static
+Core/Src/stm32f4xx_it.c:266:6:PendSV_Handler	0	static
+Core/Src/stm32f4xx_it.c:279:6:SysTick_Handler	0	static
+Core/Src/stm32f4xx_it.c:316:6:TIM3_IRQHandler	0	static
+Core/Src/stm32f4xx_it.c:330:6:USART1_IRQHandler	0	static
+Core/Src/stm32f4xx_it.c:344:6:USART2_IRQHandler	0	static
+Core/Src/stm32f4xx_it.c:358:6:I2C1_EV_IRQHandler	0	static
+Core/Src/stm32f4xx_it.c:372:6:I2C1_ER_IRQHandler	0	static

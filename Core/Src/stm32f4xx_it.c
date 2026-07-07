@@ -17,10 +17,13 @@
   */
 /* USER CODE END Header */
 
+/* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "Utils.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,11 +48,88 @@
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
+void HardFault_DumpAndHalt(uint32_t *stack_frame);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/**
+ * @brief  Cortex-M4 fault diagnostic: prints the stacked exception frame
+ *         (R0-R3, R12, LR, PC, PSR) and the fault status registers
+ *         (CFSR/HFSR/MMFAR/BFAR) over the debug UART before halting.
+ *
+ * Added because the default HardFault_Handler (bare `while(1){}`, see
+ * below) produces zero output on a real fault — indistinguishable from
+ * the firmware simply hanging. This turns "it's stuck" into concrete
+ * evidence: PC tells you which instruction faulted (cross-reference
+ * against the .map file, or addr2line on the built ELF for that PC),
+ * and CFSR's bit pattern tells you the fault class (precise bus fault,
+ * MPU violation, divide-by-zero, undefined instruction, etc).
+ *
+ * Uses Utils_LogWrite() directly (blocking HAL_UART_Transmit) rather
+ * than the LOG_ERR macro — this runs in fault context, before we know
+ * anything about the system's state, so keeping it to the one primitive
+ * we're confident still works (UART peripheral + clocks are unaffected
+ * by most fault causes) is deliberate.
+ */
+void HardFault_DumpAndHalt(uint32_t *stack_frame)
+{
+    uint32_t r0  = stack_frame[0];
+    uint32_t r1  = stack_frame[1];
+    uint32_t r2  = stack_frame[2];
+    uint32_t r3  = stack_frame[3];
+    uint32_t r12 = stack_frame[4];
+    uint32_t lr  = stack_frame[5];
+    uint32_t pc  = stack_frame[6];
+    uint32_t psr = stack_frame[7];
+
+    uint32_t cfsr  = SCB->CFSR;
+    uint32_t hfsr  = SCB->HFSR;
+    uint32_t mmfar = SCB->MMFAR;
+    uint32_t bfar  = SCB->BFAR;
+
+    char buf[196];
+    int n;
+
+    n = snprintf(buf, sizeof(buf),
+        "\r\n[FAULT] PC=0x%08lX LR=0x%08lX PSR=0x%08lX\r\n",
+        (unsigned long)pc, (unsigned long)lr, (unsigned long)psr);
+    Utils_LogWrite(buf, (uint16_t)n);
+
+    n = snprintf(buf, sizeof(buf),
+        "[FAULT] R0=0x%08lX R1=0x%08lX R2=0x%08lX R3=0x%08lX R12=0x%08lX\r\n",
+        (unsigned long)r0, (unsigned long)r1, (unsigned long)r2,
+        (unsigned long)r3, (unsigned long)r12);
+    Utils_LogWrite(buf, (uint16_t)n);
+
+    n = snprintf(buf, sizeof(buf),
+        "[FAULT] CFSR=0x%08lX HFSR=0x%08lX MMFAR=0x%08lX BFAR=0x%08lX\r\n",
+        (unsigned long)cfsr, (unsigned long)hfsr,
+        (unsigned long)mmfar, (unsigned long)bfar);
+    Utils_LogWrite(buf, (uint16_t)n);
+
+    /* Decode the CFSR bits that come up in practice. Full bit layout is
+     * in the Cortex-M4 Technical Reference Manual (SCB_CFSR); this
+     * covers the common cases rather than every bit. */
+    if (cfsr & (1UL << 0))  { n = snprintf(buf, sizeof(buf), "[FAULT] -> IACCVIOL (MPU: instruction fetch)\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+    if (cfsr & (1UL << 1))  { n = snprintf(buf, sizeof(buf), "[FAULT] -> DACCVIOL (MPU: data access)\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+    if (cfsr & (1UL << 8))  { n = snprintf(buf, sizeof(buf), "[FAULT] -> IBUSERR (bus fault on instruction fetch)\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+    if (cfsr & (1UL << 9))  { n = snprintf(buf, sizeof(buf), "[FAULT] -> PRECISERR (precise data bus fault, BFAR valid)\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+    if (cfsr & (1UL << 10)) { n = snprintf(buf, sizeof(buf), "[FAULT] -> IMPRECISERR (imprecise data bus fault)\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+    if (cfsr & (1UL << 16)) { n = snprintf(buf, sizeof(buf), "[FAULT] -> UNDEFINSTR (undefined instruction)\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+    if (cfsr & (1UL << 17)) { n = snprintf(buf, sizeof(buf), "[FAULT] -> INVSTATE (invalid EPSR/Thumb state)\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+    if (cfsr & (1UL << 25)) { n = snprintf(buf, sizeof(buf), "[FAULT] -> DIVBYZERO\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+    if (cfsr & (1UL << 24)) { n = snprintf(buf, sizeof(buf), "[FAULT] -> UNALIGNED (unaligned access trap)\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+    if (hfsr & (1UL << 30)) { n = snprintf(buf, sizeof(buf), "[FAULT] -> FORCED (escalated from a lower-priority fault)\r\n"); Utils_LogWrite(buf, (uint16_t)n); }
+
+    n = snprintf(buf, sizeof(buf), "[FAULT] Halting. Cross-reference PC against build/*.map "
+                                    "or addr2line -e build/*.elf 0x%08lX\r\n", (unsigned long)pc);
+    Utils_LogWrite(buf, (uint16_t)n);
+
+    while (1) { /* halt — diagnostic already sent */ }
+}
 
 /* USER CODE END 0 */
 
@@ -85,59 +165,73 @@ void NMI_Handler(void)
 /**
   * @brief This function handles Hard fault interrupt.
   */
-void HardFault_Handler(void)
+__attribute__((naked)) void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+  /* Naked: no compiler-generated prologue, so the assembly below sees
+   * the exact CPU state the NVIC left on fault entry — required to
+   * correctly identify which stack (MSP vs PSP) holds the exception
+   * frame. See HardFault_DumpAndHalt() above for what this leads to. */
+  __asm volatile
+  (
+    " tst lr, #4                \n"
+    " ite eq                    \n"
+    " mrseq r0, msp             \n"
+    " mrsne r0, psp             \n"
+    " b HardFault_DumpAndHalt   \n"
+  );
   /* USER CODE END HardFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
-  }
 }
 
-/*
+/**
   * @brief This function handles Memory management fault.
   */
-void MemManage_Handler(void)
+__attribute__((naked)) void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-
+  __asm volatile
+  (
+    " tst lr, #4                \n"
+    " ite eq                    \n"
+    " mrseq r0, msp             \n"
+    " mrsne r0, psp             \n"
+    " b HardFault_DumpAndHalt   \n"
+  );
   /* USER CODE END MemoryManagement_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
-    /* USER CODE END W1_MemoryManagement_IRQn 0 */
-  }
 }
 
 /**
   * @brief This function handles Pre-fetch fault, memory access fault.
   */
-void BusFault_Handler(void)
+__attribute__((naked)) void BusFault_Handler(void)
 {
-
-  while (1)
-  {
-    /* USER CODE BEGIN W1_BusFault_IRQn 0 */
-    /* USER CODE END W1_BusFault_IRQn 0 */
-  }
+  /* USER CODE BEGIN BusFault_IRQn 0 */
+  __asm volatile
+  (
+    " tst lr, #4                \n"
+    " ite eq                    \n"
+    " mrseq r0, msp             \n"
+    " mrsne r0, psp             \n"
+    " b HardFault_DumpAndHalt   \n"
+  );
+  /* USER CODE END BusFault_IRQn 0 */
 }
 
 /**
   * @brief This function handles Undefined instruction or illegal state.
   */
-void UsageFault_Handler(void)
+__attribute__((naked)) void UsageFault_Handler(void)
 {
   /* USER CODE BEGIN UsageFault_IRQn 0 */
-
+  __asm volatile
+  (
+    " tst lr, #4                \n"
+    " ite eq                    \n"
+    " mrseq r0, msp             \n"
+    " mrsne r0, psp             \n"
+    " b HardFault_DumpAndHalt   \n"
+  );
   /* USER CODE END UsageFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
-    /* USER CODE END W1_UsageFault_IRQn 0 */
-  }
 }
 
 /**

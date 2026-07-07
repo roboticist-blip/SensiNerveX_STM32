@@ -5,27 +5,22 @@
 
 #include <stdint.h>
 
-/* FEDERATED LEARNING MODE — set to 1 to run locally without a server */
 #define FL_STANDALONE_MODE         1U
 #define FL_MAX_RETRIES             3U
 
-//SYSTEM CLOCK & TIMING
 #define SYS_CORE_CLOCK_HZ          168000000UL
 #define IMU_SAMPLE_RATE_HZ         100U
 #define IMU_SAMPLE_PERIOD_S        (1.0f / IMU_SAMPLE_RATE_HZ)
 #define FEATURE_WINDOW_SECONDS     1U
 #define FEATURE_WINDOW_SAMPLES     (IMU_SAMPLE_RATE_HZ * FEATURE_WINDOW_SECONDS)
 
-//FEATURE EXTRACTION
 #define FEATURE_VECTOR_SIZE        500U
 #define IMU_RAW_AXES               6U
 #define ZSCORE_EPSILON             1e-7f
 
-//COMPLEMENTARY FILTER
 #define CF_ALPHA                   0.98f
 #define GRAVITY_MSS                9.80665f
 
-//NEURAL NETWORK
 #define NN_INPUT_SIZE              FEATURE_VECTOR_SIZE
 #define NN_HIDDEN_SIZE             16U
 #define NN_OUTPUT_SIZE             3U
@@ -43,7 +38,6 @@
  */
 #define FL_LOCAL_EPOCHS            10U
 
-//FEDERATED LEARNING PACKET
 #define FL_WEIGHT_COUNT            (NN_INPUT_SIZE * NN_HIDDEN_SIZE + \
                                     NN_HIDDEN_SIZE + \
                                     NN_HIDDEN_SIZE * NN_OUTPUT_SIZE + \
@@ -69,8 +63,6 @@
 #define MPU6050_CALIBRATION_SAMPLES 200U
 #define MPU6050_DLPF_CFG           3U
 
-
-//Master switch — set to 0 to compile the entire logging path out
 #define SD_LOGGING_ENABLE          1U
 
 #define SD_USE_4BIT_BUS            1U
@@ -86,23 +78,50 @@
 
 #define SD_LOG_DIR                 "LOGS"
 
+/** IMPORTANT: the vendored FatFs config (Middlewares/Third_Party/FatFs/
+ *  src/ffconf.h) has _USE_LFN 0 — 8.3 short filenames only, max 8 chars
+ *  before the dot. Session files are named PREFIX + 5-digit index + .CSV
+ *  (see DataLogger.c DataLogger_OpenSessionFile), so
+ *  strlen(SD_LOG_FILE_PREFIX) + 5 MUST be <= 8, or every f_stat() probe
+ *  in the free-slot search returns FR_INVALID_NAME instead of FR_NO_FILE
+ *  and the search silently exhausts all 99999 candidates without ever
+ *  opening a file. "SNX" (3 chars) + 5 digits = 8 — exactly at the limit. */
 #define SD_LOG_FILE_PREFIX         "SNX"
 _Static_assert(sizeof(SD_LOG_FILE_PREFIX) - 1U + 5U <= 8U,
     "SD_LOG_FILE_PREFIX too long for an 8.3 short filename (prefix + 5 digits must fit in 8 chars)");
 
 #define SD_LOG_MAX_ROW_LEN         160U
 
+/** Feature vector CSV: one row per 1-second window, 500 features + label +
+ *  predicted class + 3 probabilities. Independent directory/counter from
+ *  the raw IMU stream below, since the two files are used for different
+ *  purposes and may be collected at different times. See
+ *  DataLogger_LogFeatureWindow(). */
 #define SD_DATA_DIR                "DATA"
 
 #define SD_DATA_FILE_PREFIX        "DAT"
 _Static_assert(sizeof(SD_DATA_FILE_PREFIX) - 1U + 5U <= 8U,
     "SD_DATA_FILE_PREFIX too long for an 8.3 short filename (prefix + 5 digits must fit in 8 chars)");
 
+/** Raw IMU stream: one row per 100 Hz sample (ax,ay,az,gx,gy,gz,temp_c,
+ *  pitch,roll) — the actual sensor readings, not the derived/windowed
+ *  feature vector in the DATA file above. This is what's needed to
+ *  validate the complementary filter and feature extraction against
+ *  ground-truth raw sensor output, independent of everything downstream.
+ *  Independent directory/counter from both files above, same reasoning
+ *  as SD_DATA_DIR. See DataLogger_LogRawIMU(). */
+#define SD_IMU_DIR                 "IMU"
+
+#define SD_IMU_FILE_PREFIX         "IMU"
+_Static_assert(sizeof(SD_IMU_FILE_PREFIX) - 1U + 5U <= 8U,
+    "SD_IMU_FILE_PREFIX too long for an 8.3 short filename (prefix + 5 digits must fit in 8 chars)");
 
 #define SD_LOG_QUEUE_DEPTH         16U
+#define SD_IMU_QUEUE_DEPTH         64U
 
 /* 
  * SCALABILITY / MODULE FRAMEWORK
+ *
  * main.c drives a small, fixed-size table of AppModule_t entries instead
  * of hand-written per-subsystem calls. Adding a new subsystem (another
  * sensor, a second storage backend, a Wi-Fi/BLE transport, ...) means

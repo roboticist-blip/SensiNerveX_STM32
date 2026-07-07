@@ -1,0 +1,11 @@
+Core/Src/DataLogger.c:87:16:QF_DrainOne	32	static
+Core/Src/DataLogger.c:201:16:DataLogger_OpenIndexedFile	104	static
+Core/Src/DataLogger.c:502:13:DataLogger_ModuleInit	232	static
+Core/Src/DataLogger.c:62:16:QF_Enqueue.part.0	16	static
+Core/Src/DataLogger.c:316:21:DataLogger_LogWindow	264	static
+Core/Src/DataLogger.c:334:21:DataLogger_LogFLRound	200	static
+Core/Src/DataLogger.c:354:21:DataLogger_LogRawIMU	264	static
+Core/Src/DataLogger.c:411:21:DataLogger_LogRawWindow	104	static
+Core/Src/DataLogger.c:473:6:DataLogger_Flush	8	static
+Core/Src/DataLogger.c:538:13:DataLogger_ModuleTick	8	static
+Core/Src/DataLogger.c:480:6:DataLogger_GetStats	4	static
