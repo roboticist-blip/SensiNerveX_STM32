@@ -1,0 +1,9 @@
+Core/Src/main.c:580:13:App_UpdateLEDs	16	static
+Core/Src/main.c:340:13:Mod_FeatureWindow_Tick	80	static
+Core/Src/main.c:441:13:Mod_UartCommand_Tick	64	static
+Core/Src/main.c:418:13:Mod_FLC_Tick	16	static
+Core/Src/main.c:293:13:Mod_ImuSample_Tick	8	static
+Core/Src/main.c:197:5:main	152	static
+Core/Src/main.c:592:6:HAL_TIM_PeriodElapsedCallback	0	static
+Core/Src/main.c:602:6:HAL_UART_RxCpltCallback	0	static
+Core/Src/main.c:614:6:HAL_GPIO_EXTI_Callback	0	static

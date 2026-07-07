@@ -1,0 +1,3 @@
+Core/Src/Serialization.c:34:10:SER_ComputeCRC	0	static
+Core/Src/Serialization.c:57:14:SER_SerializeWeights	24	static
+Core/Src/Serialization.c:119:14:SER_DeserializeWeights	32	static
