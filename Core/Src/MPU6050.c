@@ -71,28 +71,88 @@ MPU6050_Status_t MPU6050_Init(MPU6050_Handle_t *hnd, I2C_HandleTypeDef *hi2c)
     MPU6050_Status_t status;
     uint8_t val;
 
-    hnd->hi2c      = hi2c;
-    hnd->dev_addr  = MPU6050_I2C_ADDR_SHIFTED;
-    hnd->initialized = 0U;
-    hnd->gyro_bias_x = 0.0f;
-    hnd->gyro_bias_y = 0.0f;
-    hnd->gyro_bias_z = 0.0f;
-    hnd->accel_bias_x = 0.0f;
-    hnd->accel_bias_y = 0.0f;
+    hnd->hi2c          = hi2c;
+    hnd->dev_addr      = MPU6050_I2C_ADDR_SHIFTED;
+    hnd->initialized   = 0U;
+
+    hnd->gyro_bias_x   = 0.0f;
+    hnd->gyro_bias_y   = 0.0f;
+    hnd->gyro_bias_z   = 0.0f;
+
+    hnd->accel_bias_x  = 0.0f;
+    hnd->accel_bias_y  = 0.0f;
+
     hnd->data_ready_flag = 0U;
 
     status = MPU6050_ReadReg(hnd, MPU6050_REG_WHO_AM_I, &val);
-    if (status != MPU6050_OK) return status;
+    if (status != MPU6050_OK)
+        return status;
 
     if (val != MPU6050_WHO_AM_I_VAL) {
-        LOG_ERR("MPU6050 WHO_AM_I mismatch: got 0x%02X, expected 0x%02X",
+        LOG_ERR("MPU6050 WHO_AM_I mismatch: got 0x%02X expected 0x%02X",
                 val, MPU6050_WHO_AM_I_VAL);
         return MPU6050_ERR_WHO_AM_I;
     }
+
     LOG_INF("MPU6050 WHO_AM_I OK (0x%02X)", val);
 
+    status = MPU6050_WriteReg(hnd, MPU6050_REG_PWR_MGMT_1, 0x80);
+    if (status != MPU6050_OK)
+        return status;
+
+    HAL_Delay(100);
+
+    status = MPU6050_WriteReg(hnd, MPU6050_REG_PWR_MGMT_1, 0x01);
+    if (status != MPU6050_OK)
+        return status;
+
+    HAL_Delay(10);
+
+    status = MPU6050_WriteReg(hnd, MPU6050_REG_SMPLRT_DIV, 9);
+    if (status != MPU6050_OK)
+        return status;
+
+    status = MPU6050_WriteReg(hnd, MPU6050_REG_CONFIG, 0x03);
+    if (status != MPU6050_OK)
+        return status;
+
+    status = MPU6050_WriteReg(hnd, MPU6050_REG_GYRO_CONFIG, 0x08);
+    if (status != MPU6050_OK)
+        return status;
+
+    status = MPU6050_WriteReg(hnd, MPU6050_REG_ACCEL_CONFIG, 0x00);
+    if (status != MPU6050_OK)
+        return status;
+
+    status = MPU6050_WriteReg(hnd, MPU6050_REG_INT_ENABLE, 0x01);
+    if (status != MPU6050_OK)
+        return status;
+
+    status = MPU6050_WriteReg(hnd, MPU6050_REG_INT_PIN_CFG, 0x02);
+    if (status != MPU6050_OK)
+        return status;
+
+        MPU6050_ReadReg(hnd, MPU6050_REG_PWR_MGMT_1, &val);
+    LOG_INF("PWR_MGMT_1   = 0x%02X", val);
+
+    MPU6050_ReadReg(hnd, MPU6050_REG_SMPLRT_DIV, &val);
+    LOG_INF("SMPLRT_DIV   = 0x%02X", val);
+
+    MPU6050_ReadReg(hnd, MPU6050_REG_CONFIG, &val);
+    LOG_INF("CONFIG       = 0x%02X", val);
+
+    MPU6050_ReadReg(hnd, MPU6050_REG_GYRO_CONFIG, &val);
+    LOG_INF("GYRO_CONFIG  = 0x%02X", val);
+
+    MPU6050_ReadReg(hnd, MPU6050_REG_ACCEL_CONFIG, &val);
+    LOG_INF("ACCEL_CONFIG = 0x%02X", val);
+
+    MPU6050_ReadReg(hnd, MPU6050_REG_INT_ENABLE, &val);
+    LOG_INF("INT_ENABLE   = 0x%02X", val);
+
     hnd->initialized = 1U;
-    LOG_INF("MPU6050 init OK (config skipped for diagnostics)");
+
+    LOG_INF("MPU6050 initialization completed successfully");
 
     return MPU6050_OK;
 }
