@@ -33,7 +33,7 @@
 
 ## Overview
 
-FedVibroSense implements a complete **TinyML + Federated Learning** pipeline on the STM32F405RGT6 microcontroller. Each node:
+SensiNerveX implements a complete **TinyML + Federated Learning** pipeline on the STM32F405RGT6 microcontroller. Each node:
 
 - Samples an MPU-6050 IMU at **100 Hz**
 - Fuses accelerometer and gyroscope data with a **complementary filter**
@@ -184,7 +184,7 @@ tested without SD logging on:
 ## Project Structure
 
 ```
-FedVibroSense_STM32/
+SensiNerveX_STM32/
 │
 ├── Core/
 │   ├── Inc/
@@ -383,7 +383,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ### 3. Build
 
 ```bash
-cd FedVibroSense_STM32
+cd SensiNerveX_STM32
 make all -j4
 ```
 
@@ -392,16 +392,16 @@ Expected output:
   CC   Core/Src/main.c
   CC   Core/Src/NeuralNetwork.c
   ...
-  LD   build/FedVibroSense.elf
+  LD   build/SensiNerveX.elf
 
-Linking target: build/FedVibroSense.elf
+Linking target: build/SensiNerveX.elf
 Memory region         Used Size  Region Size  %age Used
            FLASH:       54832 B         1 MB      5.23%
              RAM:       98240 B       128 KB     75.00%
 
 --- Section sizes ---
    text    data     bss     dec     hex filename
-  54832     412   97828  153072   25530 build/FedVibroSense.elf
+  54832     412   97828  153072   25530 build/SensiNerveX.elf
 ```
 
 ### 4. Flash
@@ -426,7 +426,7 @@ screen /dev/ttyUSB0 115200
 
 Expected startup output:
 ```
-[INF] === FedVibroSense STM32F405 FL Client Started ===
+[INF] === SensiNerveX STM32F405 FL Client Started ===
 [INF] FEATURE_VECTOR_SIZE=500, NN=500x16x3, FL_LOCAL_EPOCHS=10
 [INF] TIM2 microsecond timer started
 [INF] MPU6050 WHO_AM_I OK (0x68)
@@ -448,7 +448,7 @@ Expected startup output:
 make all          # Build ELF + BIN + HEX
 make clean        # Remove build directory
 make size         # Print section sizes only
-make disasm       # Generate annotated disassembly → build/FedVibroSense.dis
+make disasm       # Generate annotated disassembly → build/SensiNerveX.dis
 make flash        # Flash via OpenOCD
 make flash_stl    # Flash via st-flash
 make debug        # Start OpenOCD + GDB session
@@ -496,22 +496,22 @@ arm-none-eabi-gcc \
 ```bash
 # Flash and verify
 openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
-    -c "program build/FedVibroSense.elf verify reset exit"
+    -c "program build/SensiNerveX.elf verify reset exit"
 
 # Flash with mass erase first (if device is protected)
 openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
     -c "init; reset halt; flash erase_sector 0 0 11; \
-        program build/FedVibroSense.elf verify reset exit"
+        program build/SensiNerveX.elf verify reset exit"
 ```
 
 ### st-flash (stlink-tools)
 
 ```bash
 # Write binary at flash origin
-st-flash --reset write build/FedVibroSense.bin 0x8000000
+st-flash --reset write build/SensiNerveX.bin 0x8000000
 
 # Verify only
-st-flash verify build/FedVibroSense.bin 0x8000000
+st-flash verify build/SensiNerveX.bin 0x8000000
 
 # Erase chip
 st-flash erase
@@ -521,7 +521,7 @@ st-flash erase
 
 ```bash
 # CLI flashing
-STM32_Programmer_CLI -c port=SWD -w build/FedVibroSense.elf -v -rst
+STM32_Programmer_CLI -c port=SWD -w build/SensiNerveX.elf -v -rst
 ```
 
 ### GDB via OpenOCD
@@ -531,7 +531,7 @@ STM32_Programmer_CLI -c port=SWD -w build/FedVibroSense.elf -v -rst
 openocd -f interface/stlink.cfg -f target/stm32f4x.cfg
 
 # Terminal 2: Connect GDB
-arm-none-eabi-gdb build/FedVibroSense.elf \
+arm-none-eabi-gdb build/SensiNerveX.elf \
     -ex "target remote localhost:3333" \
     -ex "monitor reset halt" \
     -ex "load" \
@@ -662,7 +662,7 @@ STM32 Node                          Aggregation Server (RPi)
 ```python
 #!/usr/bin/env python3
 """
-FedVibroSense aggregation server — Raspberry Pi reference implementation.
+SensiNerveX aggregation server — Raspberry Pi reference implementation.
 Performs FedAvg over N client uploads, sends global model back.
 
 Install: pip3 install pyserial numpy
@@ -720,7 +720,7 @@ def fedavg(weight_list: list) -> np.ndarray:
     return np.mean(np.stack(weight_list, axis=0), axis=0)
 
 def main():
-    parser = argparse.ArgumentParser(description='FedVibroSense Aggregation Server')
+    parser = argparse.ArgumentParser(description='SensiNerveX Aggregation Server')
     parser.add_argument('--port',    default='/dev/ttyAMA0', help='UART port')
     parser.add_argument('--baud',    default=921600,         type=int)
     parser.add_argument('--clients', default=1,              type=int)
@@ -1003,7 +1003,7 @@ Research use encouraged. Please cite this repository if used in publications.
 
 ## Authors
 
-**FedVibroSense Project**  
+**SensiNerveX Project**  
 Embedded Federated Learning for Vibration Anomaly Detection  
 Target: IEEE Sensors Journal / IEEE Internet of Things Journal
 
